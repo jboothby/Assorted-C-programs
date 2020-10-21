@@ -1,2 +1,3 @@
 # Assorted C programs
- C programs from 2014 that show use of Hashmaps, Queues, and a Bubble Sort
+ C programs that I wrote as part of Intro to Programming back in 2014
+ They a range of things like Hashmaps and Bubble Sorts
