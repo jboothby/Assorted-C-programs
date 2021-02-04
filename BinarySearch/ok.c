@@ -36,9 +36,6 @@ int ok(char *dictionaryName, char *word, int length) {
 	for( int i = strlen(word); i < length; i++){
 		wordCopy[i] = ' ';
 	}
-	// change last char in wordCopy to be a linefeed
-	wordCopy[length - 1] = 10;
-	
 
 	/* open the dictionary file in read-only mode, then error check */
 	fd = open(dictionaryName, O_RDONLY);
@@ -55,7 +52,7 @@ int ok(char *dictionaryName, char *word, int length) {
 	lower = 1;
 	upper = EOFoffset / length;	// total bytes divided by width gives line numbers
 
-	/* Loop until word is found ( will return out of loop ), or no lines left to check */
+	/* Loop until word is found, or no lines left to check (lineFound will be negative last line checked) */
 	lineFound = 0;
 	while( !lineFound ){
 
@@ -75,7 +72,7 @@ int ok(char *dictionaryName, char *word, int length) {
 		}
 
 		/* Compare current line with word, break if equal */
-		if( strncmp( buffer, wordCopy, length ) == 0 ){
+		if( strncmp( buffer, wordCopy, length - 1 ) == 0 ){ // length - 1 to ignore linefeed
 			lineFound = currentLine;
 			break;
 		}
@@ -88,10 +85,6 @@ int ok(char *dictionaryName, char *word, int length) {
 		 * do opposite if wordCopy is more */
 		for( int i = 0; i < length; i++ ){
 
-			/* Loop until difference is found */
-			if( buffer[i] == wordCopy[i] )
-				continue;
-			
 			/* If buffer letter is larger, then jump down */
 			if( buffer[i] > wordCopy[i] ){
 				if( lower == currentLine ){		// if there is no more to go down, then word is not in dictionary
@@ -100,9 +93,10 @@ int ok(char *dictionaryName, char *word, int length) {
 				else{					// otherwise, set upper to current to jump down halfway
 					upper = currentLine;
 				}
-				break;
+				break;					// break for loop and continue to next word
 			}
-			else{
+			/* If buffer letter is smaller, then jump up */
+			else if( buffer[i] < wordCopy[i] ){
 				if( upper == currentLine ){		// if there there is no more to go up, then word is not in dictionary
 					lineFound = -currentLine;
 				}
@@ -112,7 +106,7 @@ int ok(char *dictionaryName, char *word, int length) {
 				else{					// otherwise, set lower to current to jump up halfway
 					lower = currentLine;
 				}
-				break;
+				break;					// break for loop and continue to next word
 			}
 		}
 	}

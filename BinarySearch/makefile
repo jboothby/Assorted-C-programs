@@ -13,3 +13,6 @@ okmain.o: okmain.c
 
 run: $(EXEC) 	
 	./$(EXEC)
+
+clean:
+	rm -f $(OBJS) $(EXEC)
