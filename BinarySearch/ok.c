@@ -54,6 +54,7 @@ int ok(char *dictionaryName, char *word, int length) {
 		/* Calculate offset based on lower and upper line limits */
 		currentLine = ( ( upper + lower ) / 2 );
 		currentOffset = ( currentLine - 1 ) * length;// becuase offset is 0 indexed, but line is not
+		printf("Low:%d, Cur:%d, High:%d\n", lower, currentLine, upper);
 
 		/* seek to proper offset */
 		lseek( fd, currentOffset, SEEK_SET );
@@ -85,21 +86,19 @@ int ok(char *dictionaryName, char *word, int length) {
 				if( lower == currentLine ){		// if there is no more to go down, then word is not in dictionary
 					lineFound = -currentLine;
 				}
-				else{					// otherwise, set upper to current to jump down halfway
-					upper = currentLine;
+				else{					// otherwise, set upper to one below current (already checked current)
+					upper = currentLine - 1;
 				}
 				break;					// break for loop and continue to next word
 			}
+
 			/* If buffer letter is smaller, then jump up */
 			else if( buffer[i] < wordCopy[i] ){
 				if( upper == currentLine ){		// if there there is no more to go up, then word is not in dictionary
 					lineFound = -currentLine;
 				}
-				else if( upper - lower == 1){		// if the distance bewteen lower and upper is 1, set lower to upper
-					lower = upper;			// this avoids problems with integer division never rounding up
-				}
-				else{					// otherwise, set lower to current to jump up halfway
-					lower = currentLine;
+				else{					// otherwise, set lower to current + 1 to jump up halfway
+					lower = currentLine + 1;
 				}
 				break;					// break for loop and continue to next word
 			}
