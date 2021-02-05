@@ -54,7 +54,6 @@ int ok(char *dictionaryName, char *word, int length) {
 		/* Calculate offset based on lower and upper line limits */
 		currentLine = ( ( upper + lower ) / 2 );
 		currentOffset = ( currentLine - 1 ) * length;// becuase offset is 0 indexed, but line is not
-		printf("Low:%d, Cur:%d, High:%d\n", lower, currentLine, upper);
 
 		/* seek to proper offset */
 		lseek( fd, currentOffset, SEEK_SET );
