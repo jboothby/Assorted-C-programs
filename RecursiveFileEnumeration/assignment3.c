@@ -12,29 +12,29 @@
 #include <string.h>
 #include <stdio.h>
 
-int readable(char *inputPath);
+int enumFiles(char *inputPath);
 
-int main(int argc, char *argv[]){
+int readable(char *inputPath){
 
 	// Check arguments and set start directory appropriately
 	char initialDirectory[PATH_MAX];
-	if( argc > 1 ){
+	if( inputPath != NULL ){
 		// Ensure that pathname isn't too long
-		if( strlen(argv[1]) > PATH_MAX){
+		if( strlen(inputPath) > PATH_MAX){
 		       	fprintf(stderr,"Supplied directory name too long\n");
 			return( -1 );
 		}
 
 		// Attempt to stat the supplied path
 		struct stat statp;
-	       	if( lstat( argv[1], &statp ) < 0){
+	       	if( lstat( inputPath, &statp ) < 0){
 			fprintf(stderr, "%s\n", strerror(errno));
 			return( -errno);	
 		}
 		// Check to see if path is a regular file
 		if( S_ISREG(statp.st_mode) ){
 			// Return 1 if file is readable, 0 if not
-			if( access( argv[1], R_OK) == 0){
+			if( access( inputPath, R_OK) == 0){
 				return 1;
 			}else{
 				return 0;
@@ -42,9 +42,9 @@ int main(int argc, char *argv[]){
 		}
 
 		// Descend into starting directory. Print error and return if not successful
-		chdir(argv[1]);
+		chdir(inputPath);
 		if( chdir < 0 ){
-			fprintf(stderr,"Error on directory %s\n", argv[1]);
+			fprintf(stderr,"Error on directory %s\n", inputPath);
 			fprintf(stderr,"%s\n", strerror(errno));
 			return( -errno);
 		}
@@ -65,16 +65,14 @@ int main(int argc, char *argv[]){
 	}
 	closedir(dirp);
 
-	// Call recursive function 'readable'
-	printf("There are %d readable files in the file structure starting at %s\n",
-			readable(initialDirectory), initialDirectory);
-
+	// Call recursive function 'enumFiles'
+	return enumFiles(initialDirectory);
 }
 
 /*	Method to be called recursively. Counts number of files in directory that are
  *	readable to the current process
  */
-int readable(char *inputPath){
+int enumFiles(char *inputPath){
 
 	DIR *dirp = opendir(inputPath);		// initialize directory pointer
 	int count = 0;
@@ -122,7 +120,7 @@ int readable(char *inputPath){
 
 		// if directory, recurse
 		if( direntp->d_type == DT_DIR){
-			count += readable(entryPath);
+			count += enumFiles(entryPath);
 		}
 	}
 
