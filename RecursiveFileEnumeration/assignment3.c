@@ -16,14 +16,24 @@ int readable(char *inputPath);
 
 int main(int argc, char *argv[]){
 
-	char buf[256];
-
+	// Check arguments and set start directory appropriately
+	char initialDirectory[256];
 	if( argc > 1 ){
-		printf("Starting at directory %s\n", argv[1]);
+		strncpy(initialDirectory, argv[1], strlen(argv[1]) + 1);
+		printf("Starting at directory %s\n", initialDirectory);
 	}else{
-		getcwd(buf, 256);
-		printf("Starting at directory %s\n", buf);
+		getcwd(initialDirectory, 256);
+		printf("Starting at directory %s\n", initialDirectory);
 	}
+
+	// Check that initial directory is readable
+	DIR *dirp = opendir(initialDirectory);
+	if( dirp == NULL ){
+		fprintf(stderr, "Error opening directory: %s\n", initialDirectory);
+		fprintf(stderr, "%s\n", strerror(errno));
+		return( -errno);
+	}
+
 }
 
 
