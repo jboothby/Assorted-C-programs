@@ -12,18 +12,15 @@
 #include <string.h>
 #include <stdio.h>
 
-int enumFiles(char *inputPath);
+int enumFiles(char *inputPath);		// recursive function for enumerating files in a directory
 
-int readable(char *inputPath){
+int readable(char *inputPath){		// main function that handles edge cases and calls recursive function
 
-	// Check arguments and set start directory appropriately
+	// init buffer for path name
 	char initialDirectory[PATH_MAX];
+
+	// If there was a parameter supplied, determine if file or directory, act accordingly
 	if( inputPath != NULL ){
-		// Ensure that pathname isn't too long
-		if( strlen(inputPath) > PATH_MAX){
-		       	fprintf(stderr,"Supplied directory name too long\n");
-			return( -1 );
-		}
 
 		// Attempt to stat the supplied path
 		struct stat statp;
@@ -31,6 +28,7 @@ int readable(char *inputPath){
 			fprintf(stderr, "%s\n", strerror(errno));
 			return( -errno);	
 		}
+
 		// Check to see if path is a regular file
 		if( S_ISREG(statp.st_mode) ){
 			// Return 1 if file is readable, 0 if not
@@ -42,15 +40,16 @@ int readable(char *inputPath){
 		}
 
 		// Descend into starting directory. Print error and return if not successful
-		chdir(inputPath);
-		if( chdir < 0 ){
+		if( chdir(inputPath) < 0 ){
 			fprintf(stderr,"Error on directory %s\n", inputPath);
 			fprintf(stderr,"%s\n", strerror(errno));
 			return( -errno);
 		}
+
 		// copy directory path into buffer
 		getcwd(initialDirectory, 256);
 
+	// if there was no parameter supplied, use cwd
 	}else{
 		// copy directory path into buffer
 		getcwd(initialDirectory, 256);
@@ -78,6 +77,7 @@ int enumFiles(char *inputPath){
 	int count = 0;
 	printf("Descending: %s\n", inputPath);
 	chdir(inputPath);			// descend into directory
+	
 
 	// skip empty directories or those that cannot be opened
 	if( dirp == NULL ){
@@ -87,8 +87,9 @@ int enumFiles(char *inputPath){
 	}
 
 	struct dirent* direntp;			// initialize directory entry pointer
+
 	//  loop until direntp is NULL (End-of-directory or error
-	errno = 0;
+	errno = 0;				// reset errno in case set from above
 	while( (direntp = readdir(dirp)) != NULL ){
 
 		// skip "." and ".." directories
