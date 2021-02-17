@@ -1,8 +1,13 @@
-/*	This program will count the number of regular files readable by
+/*	Joseph Boothby
+ *	CS360
+ *	Assignment 3
+ *
+ *	This program will count the number of regular files readable by
  *	the current process in the the supplied directory and all child
  *	directories. If no directory is supplied, current working directory
  *	is assumed.
  */
+/* --------------- Imports ------------ */
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -11,10 +16,11 @@
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
-
+/* --------- Function Prototypes -------*/
 int enumFiles(char *inputPath);		// recursive function for enumerating files in a directory
 
-int readable(char *inputPath){		// main function that handles edge cases and calls recursive function
+/* Main function that handles edge cases from input and calls recursive function */
+int readable(char *inputPath){
 
 	// init buffer for path name
 	char initialDirectory[PATH_MAX];
@@ -22,10 +28,9 @@ int readable(char *inputPath){		// main function that handles edge cases and cal
 	// If there was a parameter supplied, determine if file or directory, act accordingly
 	if( inputPath != NULL ){
 
-		// Attempt to stat the supplied path
+		// Attempt to stat the supplied path, return error if not successful
 		struct stat statp;
 	       	if( lstat( inputPath, &statp ) < 0){
-			fprintf(stderr, "%s\n", strerror(errno));
 			return( -errno);	
 		}
 
@@ -39,10 +44,8 @@ int readable(char *inputPath){		// main function that handles edge cases and cal
 			}
 		}
 
-		// Descend into starting directory. Print error and return if not successful
+		// Descend into starting directory.  return error if not successful
 		if( chdir(inputPath) < 0 ){
-			fprintf(stderr,"Error on directory %s\n", inputPath);
-			fprintf(stderr,"%s\n", strerror(errno));
 			return( -errno);
 		}
 
@@ -51,15 +54,12 @@ int readable(char *inputPath){		// main function that handles edge cases and cal
 
 	// if there was no parameter supplied, use cwd
 	}else{
-		// copy directory path into buffer
 		getcwd(initialDirectory, 256);
 	}
 
 	// Check that initial directory is readable
 	DIR *dirp = opendir(initialDirectory);
 	if( dirp == NULL ){
-		fprintf(stderr, "Error opening directory: %s\n", initialDirectory);
-		fprintf(stderr, "%s\n", strerror(errno));
 		return( -errno);
 	}
 	closedir(dirp);
@@ -68,33 +68,28 @@ int readable(char *inputPath){		// main function that handles edge cases and cal
 	return enumFiles(initialDirectory);
 }
 
-/*	Method to be called recursively. Counts number of files in directory that are
+/*	function to be called recursively. Counts number of files in directory that are
  *	readable to the current process
  */
 int enumFiles(char *inputPath){
 
 	DIR *dirp = opendir(inputPath);		// initialize directory pointer
-	int count = 0;
-	printf("Descending: %s\n", inputPath);
+	int count = 0;				// init counter for files 
 	chdir(inputPath);			// descend into directory
-	
 
 	// skip empty directories or those that cannot be opened
 	if( dirp == NULL ){
-		fprintf(stderr,"%s is NULL or cannot be opened\n", inputPath);
-		fprintf(stderr,"%s\n", strerror(errno));
 	      	return count;
 	}
 
 	struct dirent* direntp;			// initialize directory entry pointer
-
+	errno = 0;				// reset errno
 	//  loop until direntp is NULL (End-of-directory or error
-	errno = 0;				// reset errno in case set from above
 	while( (direntp = readdir(dirp)) != NULL ){
 
 		// skip "." and ".." directories
 		if( strcmp( direntp->d_name, ".") == 0 || strcmp( direntp->d_name, "..") == 0){
-				continue;
+			continue;
 		}
 
 		// if symbolic link, ignore and continue
@@ -110,12 +105,10 @@ int enumFiles(char *inputPath){
 
 		// if reguar file, check for readable
 		if( direntp->d_type == DT_REG){
+			// only increment counter if file is readable
 			if( access( entryPath, R_OK ) == 0){
 				count++;
 				continue;
-			}
-			else{
-				printf("%s is NOT readable\n", entryPath);
 			}
 		}
 
@@ -125,9 +118,7 @@ int enumFiles(char *inputPath){
 		}
 	}
 
+	// close directory pointer and return count
 	closedir(dirp);
 	return count;
-
 }
-
-
