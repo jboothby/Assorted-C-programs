@@ -19,11 +19,29 @@ int main(int argc, char *argv[]){
 	// Check arguments and set start directory appropriately
 	char initialDirectory[PATH_MAX];
 	if( argc > 1 ){
+		// Ensure that pathname isn't too long
 		if( strlen(argv[1]) > PATH_MAX){
 		       	fprintf(stderr,"Supplied directory name too long\n");
 			return( -1 );
 		}
-		// Descend into startind directory. Print error and return if not successful
+
+		// Attempt to stat the supplied path
+		struct stat statp;
+	       	if( lstat( argv[1], &statp ) < 0){
+			fprintf(stderr, "%s\n", strerror(errno));
+			return( -errno);	
+		}
+		// Check to see if path is a regular file
+		if( S_ISREG(statp.st_mode) ){
+			// Return 1 if file is readable, 0 if not
+			if( access( argv[1], R_OK) == 0){
+				return 1;
+			}else{
+				return 0;
+			}
+		}
+
+		// Descend into starting directory. Print error and return if not successful
 		chdir(argv[1]);
 		if( chdir < 0 ){
 			fprintf(stderr,"Error on directory %s\n", argv[1]);
@@ -85,21 +103,26 @@ int readable(char *inputPath){
 			continue;
 		}
 
+		// create a new absolute path using current path and filename of directory entry
+		char entryPath[ strlen(inputPath) + strlen( direntp->d_name) + 2];
+		strcpy(entryPath, inputPath);
+		strcat(entryPath, "/");
+		strcat(entryPath, direntp->d_name);
+
 		// if reguar file, check for readable
 		if( direntp->d_type == DT_REG){
-			printf("Counting %s\n", direntp->d_name);
-			count++;
-			continue;
+			if( access( entryPath, R_OK ) == 0){
+				count++;
+				continue;
+			}
+			else{
+				printf("%s is NOT readable\n", entryPath);
+			}
 		}
 
 		// if directory, recurse
 		if( direntp->d_type == DT_DIR){
-			// make new buffer for current path with directory name appended
-			char newPath[ strlen(inputPath) + strlen( direntp->d_name) + 2];
-			strcpy(newPath, inputPath);
-			strcat(newPath, "/");
-			strcat(newPath, direntp->d_name);
-			count += readable(newPath);
+			count += readable(entryPath);
 		}
 	}
 
