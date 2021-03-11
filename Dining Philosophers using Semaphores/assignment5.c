@@ -9,11 +9,11 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
-#include <signal.h>
 #include <sys/sem.h>
 #include <sys/wait.h>
-#include <sys/shm.h>
 #include <time.h>
+
+#define MAX_EAT 100    // time that each philosopher eats before leaving table
 
 // Return random integer with gaussian distribution
 int randomGaussian(int mean, int stddev); 
@@ -107,7 +107,11 @@ int philosophize(int ID, int semID){
             exit(-errno);
         }
 
-        if( cumulativeEat > 10 ) exit(0);      // exit when total time eating reaches 100 seconds
+        // exit when total time eating reaches specified seconds
+        if( cumulativeEat > MAX_EAT ){
+            printf("Philosopher %d is leaving the table after eating for %d seconds.\n", ID, cumulativeEat);
+            exit(0);
+        }
     }
 }
 
