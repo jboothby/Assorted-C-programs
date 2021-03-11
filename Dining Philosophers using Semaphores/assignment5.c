@@ -72,8 +72,8 @@ int philosophize(int ID, int semID){
     int leftStick = ID;             // number of left chopstick semaphore
     int rightStick = (ID + 1) % 5;  // number of right chipstick semaphore
 
-    struct sembuf eat[2] = { {leftStick, -1, 0}, {rightStick, -1, 0} }; // left stick is same number as philosopher
-    struct sembuf think[2] = { {leftStick, 1, 0}, {rightStick, 1, 0} }; // right stick is +1 (%5 wraps number 4's right to 0)
+    struct sembuf eat[2] = { {leftStick, -1, 0}, {rightStick, -1, 0} }; // pick up both chopsticks
+    struct sembuf think[2] = { {leftStick, 1, 0}, {rightStick, 1, 0} }; // set down both chopsticks
 
     // Infinite loop until cumulative eat is high enough
     for(;;){ 
