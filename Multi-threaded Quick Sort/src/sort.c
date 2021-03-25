@@ -45,7 +45,9 @@ int main(int argc, char *argv[]){
 
     /* Read array back and free all allocated memory */
     for( int i = 0; i < count; i++){
-        //printf("%s\n", array[i]);
+        if( i < 5){
+            printf("%s\n", array[i]);
+        }
         free(array[i]);
     }
     free(array);

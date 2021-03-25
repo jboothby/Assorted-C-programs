@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <errno.h>
 
 #define SORT_THRESHOLD      40
 
@@ -16,11 +18,11 @@ static int maximumThreads;              /* maximum # of threads to be used */
 static pthread_t *threads;              /* Array of thread ids */
 
 /* Condition, threads wait for a job */
-static pthread_cond_t jobReady = PTHREAD_COND_INITIALIZER;
-static int jobs;
+//static pthread_cond_t jobReady = PTHREAD_COND_INITIALIZER;
+//static int jobs;
 
 /* Protects available_threads var */
-static pthread_mutex_t availMutex = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t availMutex = PTHREAD_MUTEX_INITIALIZER;
 static int available_threads;
 
 /* This is an implementation of insert sort, which although it is */
@@ -49,7 +51,7 @@ static void quickSort(void* p) {
     int left = params->left;
     int right = params->right;
     int i = left, j = right;
-    
+
     if (j - i > SORT_THRESHOLD) {           /* if the sort range is substantial, use quick sort */
 
         int m = (i + j) >> 1;               /* pick pivot as median of         */
@@ -100,10 +102,26 @@ void setSortThreads(int count) {
 /* user callable sort procedure, sorts array of count strings, beginning at address array */
 
 void sortThreaded(char** array, unsigned int count) {
+    int s;
+
     SortParams parameters;
     parameters.array = array; parameters.left = 0; parameters.right = count - 1;
-    quickSort(&parameters);
-    
+    //quickSort(&parameters);
+
+    /* Single threaded version of quicksort */
+    s = pthread_create(&threads[0], NULL, (void*)quickSort, (void*)&parameters);
+    if( s > 0){
+        printf("Error <%d> on pthread_create\n", s);
+        exit(-1);
+    }
+   
+    /* Wait for thread to join before returning */  
+    s = pthread_join(threads[0], NULL);
+    if( s > 0 ){
+        printf("Error <%d> on pthread_join\n", s);
+        exit(-1);
+    }
+
     if( threads != NULL ){
         free( threads );
     }
