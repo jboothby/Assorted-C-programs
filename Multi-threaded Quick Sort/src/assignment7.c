@@ -13,6 +13,16 @@ typedef struct _sortParams {
 
 static int maximumThreads;              /* maximum # of threads to be used */
 
+static pthread_t *threads;              /* Array of thread ids */
+
+/* Condition, threads wait for a job */
+static pthread_cond_t jobReady = PTHREAD_COND_INITIALIZER;
+static int jobs;
+
+/* Protects available_threads var */
+static pthread_mutex_t availMutex = PTHREAD_MUTEX_INITIALIZER;
+static int available_threads;
+
 /* This is an implementation of insert sort, which although it is */
 /* n-squared, is faster at sorting short lists than quick sort,   */
 /* due to its lack of recursive procedure call overhead.          */
@@ -72,22 +82,19 @@ static void quickSort(void* p) {
         
         SortParams second; second.array = array; second.left = i; second.right = right;
         quickSort(&second);                 /* sort the right partition */
+
                 
     } else insertSort(array,i,j);           /* for a small range use insert sort */
+
+    
 }
 
 /* user interface routine to set the number of threads sortT is permitted to use */
 
 void setSortThreads(int count) {
-    //TODO: Set up lock on array so each thread locks it during viewing
-    //TODO: Figure out what the fuck pthread_cond_wait and pthread_cond_signal do
     maximumThreads = count;
-    int i;
-    for( i = 0; i < maximumThreads; i++ ){
-        //TODO: Malloc pthread_cond_t for each count
-        //TODO: Initialize each with pthread_cond_init()
-    }
-   
+    threads = calloc(maximumThreads, sizeof(*threads));  /* Allocate space for thread id array */
+    available_threads = maximumThreads;                  /* Initialize counter (mutex variable */
 }
 
 /* user callable sort procedure, sorts array of count strings, beginning at address array */
@@ -96,4 +103,8 @@ void sortThreaded(char** array, unsigned int count) {
     SortParams parameters;
     parameters.array = array; parameters.left = 0; parameters.right = count - 1;
     quickSort(&parameters);
+    
+    if( threads != NULL ){
+        free( threads );
+    }
 }
