@@ -33,7 +33,6 @@ static int jobs;
 
 /* Protects available_threads var */
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Declare global queue to hold jobs to be completed */
 static node *queueHead = NULL;
@@ -76,7 +75,7 @@ static SortParams* popJob(){
     retData = temp->data;   /* Extract data */
 
     queueHead = temp->next;  /* Point head to next item in queue */
-    //free(temp);              /* Free allocated node */
+    free(temp);              /* Free allocated node */
 
     return retData;
 }
@@ -136,28 +135,22 @@ static void quickSort(void* p) {
             } else break;                   /* if i > j, this partitioning is done  */
         }
         
-        SortParams *first = malloc(sizeof(SortParams));
-        first->array = array; first->left = left; first->right = j;
+        SortParams first;  first.array = array; first.left = left; first.right = j;
         // quickSort(&first);
-        produce(first);                  /* sort the left partition  */
+        produce(&first);                  /* sort the left partition  */
 
-        SortParams *second = malloc(sizeof(SortParams));
-        second->array = array; second->left = i; second->right = right;
+        SortParams second; second.array = array; second.left = i; second.right = right;
         //quickSort(&second);
-        produce(second);                 /* sort the right partition */
+        produce(&second);                 /* sort the right partition */
                 
-    } else{
-        insertSort(array,i,j);           /* for a small range use insert sort */
-        pthread_cond_signal(&jobReady);
-     }
+    } else insertSort(array,i,j);           /* for a small range use insert sort */
 }
 
 /* Produce a job using input */
 static void *produce(SortParams *p){
+    printf("Producing job, first word %s, last word %s. Thread id (%ld)\n", p->array[0], p->array[p->right], pthread_self());
     pthread_mutex_lock(&mutex);             // Lock mutex to acced job queue
-    pthread_mutex_lock(&jobMutex);
     jobs++;
-    pthread_mutex_unlock(&jobMutex);
     pushJob(p);                             // push new SortParams onto queue
     pthread_cond_signal(&jobReady);         // Signal threads to wake up
     pthread_mutex_unlock(&mutex);           // Unlock Mutex
@@ -167,30 +160,25 @@ static void *produce(SortParams *p){
 /* Keep threads in pool waiting to be signalled to do a subarray sort */
 static void *consumer(){
     // TODO: CHECK CONSUMER PSEUDOCODE AGAIN
-    SortParams *temp = NULL;
+    SortParams *temp;
     while(1){
         /* Wait on new job in queue */
         pthread_mutex_lock(&mutex);
         while( isEmpty() ){
             pthread_cond_wait(&jobReady, &mutex);
         }
-        if (!isEmpty()){
+        if (!isEmpty())
             temp = popJob();
-        }
 
         pthread_mutex_unlock(&mutex);
         /* If job exists, sort the next one */
         if( temp != NULL ){
+            printf("Sorting job, first word %s, last word %s. Thread id (%ld)\n", temp->array[0], temp->array[temp->right], pthread_self());
             quickSort( temp );
-            //free(temp);
-            pthread_mutex_lock(&jobMutex);
             jobs--;
-            pthread_mutex_unlock(&jobMutex);
         }
-
-        printf("Jobs: %d\n", jobs);
+        
         if(jobs == 0){
-            pthread_cond_signal(&jobReady);
             return;
         }
     
@@ -216,8 +204,8 @@ void sortThreaded(char** array, unsigned int count) {
 
     // Create each thread in pool and send to consumer
     for( i = 0; i < maximumThreads; i++){
-       printf("Creating thread %d\n", i);
        s = pthread_create(&threads[i], NULL, consumer, NULL);
+       printf("Creating thread id (%ld)\n", threads[i]);
        if( s > 0){
            printf("Error <%d> on pthread_create\n", s);
            exit(-1);
@@ -228,8 +216,8 @@ void sortThreaded(char** array, unsigned int count) {
 
     // Wait for thread to join before returning
     for( i = 0; i < maximumThreads; i++){
-        printf("Joining thread %d\n", i);
         s = pthread_join(threads[i], NULL);
+        printf("Joining thread %d\n", i);
         if( s > 0 ){
             printf("Error <%d> on pthread_join\n", s);
             exit(-1);

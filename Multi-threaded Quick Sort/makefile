@@ -1,6 +1,6 @@
 CC = gcc
 SRC_DIR = src
-CCFLAGS = -g -Wall -Iinclude
+CCFLAGS = -g -Iinclude
 LFLAGS = -lpthread
 EXEC = sort
 OBJS = sort.o getWord.o assignment7.o

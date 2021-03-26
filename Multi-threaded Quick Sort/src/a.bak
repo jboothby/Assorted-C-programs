@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <errno.h>
+#include <assert.h>
 
 #define SORT_THRESHOLD      40
 
@@ -14,12 +15,6 @@ typedef struct _sortParams {
     int right;
 } SortParams;
 
-/* a queue that holds jobs to complete */
-typedef struct node {
-    SortParams *data;
-    struct node* next;
-}node;
-
 /* Function Prototypes */
 static void *produce(SortParams *p);
 static void *consumer();
@@ -29,57 +24,12 @@ static pthread_t *threads;              /* Array of thread ids */
 
 /* Condition, threads wait for a job */
 static pthread_cond_t jobReady = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t threadReady = PTHREAD_COND_INITIALIZER;
 static int jobs;
 
-/* Protects available_threads var */
+/* Protects task variable */
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
-
-/* Declare global queue to hold jobs to be completed */
-static node *queueHead = NULL;
-static node *queueTail = NULL;
-
-/* Check to see if global jobQueue is empty */
-static int isEmpty(){
-    if( queueHead == NULL )
-        return 1;
-    return 0;
-}
-
-/* Insert into the global jobQueue */
-static void pushJob(SortParams *p){
-
-    /* Allocate new job */
-    node *temp = (node*) malloc(sizeof(node));
-    temp->data = p;
-    temp->next = NULL; 
-
-    if( isEmpty() )            /* If the queue is empty, make this the top */
-        queueHead = temp;
-    else                       /* If the queue is not empty, make this the end */
-        queueTail->next = temp;
-    
-    queueTail = temp;
-}
-
-/* Pop job off of jobQueue */
-static SortParams* popJob(){
-    
-    if( isEmpty() ){         /* Edge case, return if queue empty */
-        fprintf(stderr,"No job to pop\n");
-        return NULL;
-    }
-    
-    SortParams *retData;    /* Holder for return data */
-
-    node *temp = queueHead; /* Store head in temp*/
-    retData = temp->data;   /* Extract data */
-
-    queueHead = temp->next;  /* Point head to next item in queue */
-    //free(temp);              /* Free allocated node */
-
-    return retData;
-}
+static SortParams *task = NULL;
 
 /* This is an implementation of insert sort, which although it is */
 /* n-squared, is faster at sorting short lists than quick sort,   */
@@ -138,27 +88,37 @@ static void quickSort(void* p) {
         
         SortParams *first = malloc(sizeof(SortParams));
         first->array = array; first->left = left; first->right = j;
-        // quickSort(&first);
+       // quickSort(&first);
         produce(first);                  /* sort the left partition  */
 
         SortParams *second = malloc(sizeof(SortParams));
         second->array = array; second->left = i; second->right = right;
-        //quickSort(&second);
+       // quickSort(&second);
         produce(second);                 /* sort the right partition */
+
+        //TODO flag
                 
     } else{
-        insertSort(array,i,j);           /* for a small range use insert sort */
-        pthread_cond_signal(&jobReady);
-     }
+         insertSort(array,i,j);
+         //printf("Thread %ld exiting\n", pthread_self());
+        // pthread_exit(0);
+    }
 }
 
 /* Produce a job using input */
 static void *produce(SortParams *p){
-    pthread_mutex_lock(&mutex);             // Lock mutex to acced job queue
-    pthread_mutex_lock(&jobMutex);
-    jobs++;
-    pthread_mutex_unlock(&jobMutex);
-    pushJob(p);                             // push new SortParams onto queue
+    printf("Reached produce, thread(%ld)\n", pthread_self());
+    pthread_mutex_lock(&mutex);             // Lock mutex to access task var
+    if( task != NULL ){                     // Wait for task to be empty
+        printf("Wait thread ready, thread (%ld)\n", pthread_self());
+        pthread_mutex_unlock(&mutex);
+        quickSort(p);
+        pthread_mutex_lock(&mutex);
+        pthread_cond_wait(&threadReady, &mutex);
+    }
+    assert(task == NULL);                   // Ensure task actually empty
+    task = p;                               // post the task
+    printf("Signal job ready, thread (%ld)\n", pthread_self());
     pthread_cond_signal(&jobReady);         // Signal threads to wake up
     pthread_mutex_unlock(&mutex);           // Unlock Mutex
 }
@@ -166,34 +126,26 @@ static void *produce(SortParams *p){
 
 /* Keep threads in pool waiting to be signalled to do a subarray sort */
 static void *consumer(){
-    // TODO: CHECK CONSUMER PSEUDOCODE AGAIN
-    SortParams *temp = NULL;
+    //printf("Reached consumer, thread(%ld)\n", pthread_self());
     while(1){
-        /* Wait on new job in queue */
-        pthread_mutex_lock(&mutex);
-        while( isEmpty() ){
-            pthread_cond_wait(&jobReady, &mutex);
+        SortParams temp;
+        temp.array = NULL;
+        pthread_mutex_lock(&mutex);                 // Lock mutex to access task var
+        if( task == NULL ){                         // Wait for task
+            printf("Wait job ready, thread (%ld)\n", pthread_self());
+            pthread_cond_wait(&jobReady, &mutex);   
         }
-        if (!isEmpty()){
-            temp = popJob();
+        if (task != NULL){                          // If job available
+            temp.array = task->array;
+            temp.left = task->left;
+            temp.right = task->right;
+            free(task);
+            task = NULL;                            // Empty job variable
+            printf("Signal thread ready, L:%d R:%d, thread (%ld)\n",temp.left, temp.right, pthread_self());
+            pthread_cond_signal(&threadReady);      // Signal that job var is empty
         }
-
-        pthread_mutex_unlock(&mutex);
-        /* If job exists, sort the next one */
-        if( temp != NULL ){
-            quickSort( temp );
-            //free(temp);
-            pthread_mutex_lock(&jobMutex);
-            jobs--;
-            pthread_mutex_unlock(&jobMutex);
-        }
-
-        printf("Jobs: %d\n", jobs);
-        if(jobs == 0){
-            pthread_cond_signal(&jobReady);
-            return;
-        }
-    
+        pthread_mutex_unlock(&mutex);               // Unlock mutex
+        if (temp.array) quickSort(&temp);                  // Sort new task
     }
 }
 
@@ -216,20 +168,20 @@ void sortThreaded(char** array, unsigned int count) {
 
     // Create each thread in pool and send to consumer
     for( i = 0; i < maximumThreads; i++){
-       printf("Creating thread %d\n", i);
        s = pthread_create(&threads[i], NULL, consumer, NULL);
+       printf("Creating thread id (%ld)\n", threads[i]);
        if( s > 0){
            printf("Error <%d> on pthread_create\n", s);
            exit(-1);
        }
     }
-    //quickSort(&parameters);
-    produce(&parameters);
+    quickSort(&parameters);
+   // produce(&parameters);
 
     // Wait for thread to join before returning
     for( i = 0; i < maximumThreads; i++){
-        printf("Joining thread %d\n", i);
         s = pthread_join(threads[i], NULL);
+        printf("Joining thread %d\n", i);
         if( s > 0 ){
             printf("Error <%d> on pthread_join\n", s);
             exit(-1);

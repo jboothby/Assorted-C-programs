@@ -37,7 +37,7 @@ int main(int argc, char *argv[]){
 
     
     start = clock();                /* Start counter */
-    setSortThreads(1);              /* Initialize threads for sorting */
+    setSortThreads(2);              /* Initialize threads for sorting */
     sortThreaded( array, count);    /* Sort the array */
     stop = clock();                 /* Stop the counter */
 
