@@ -27,7 +27,6 @@ static int maximumThreads;              /* maximum # of threads to be used */
 static pthread_t *threads;              /* Array of thread ids */
 
 /* Condition, threads wait for a job */
-static pthread_cond_t jobReady = PTHREAD_COND_INITIALIZER;
 static int jobs;
 
 /* Protects available_threads var */
@@ -193,10 +192,6 @@ static void *produce(SortParams *p){
 
     pushJob(p);                                 // push new SortParams onto queue
 
-    s = pthread_cond_signal(&jobReady);         // Signal threads to wake up
-    if( s > 0){
-        error(s, "pthread_cond_signal");
-    }
 
     s = pthread_mutex_unlock(&mutex);           // Unlock mutex
     if( s > 0){
@@ -211,22 +206,6 @@ static void consumer(){
 
     // Loop while still jobs to do
     while(1){
-        /* Wait on new job in queue */
-        s = pthread_mutex_lock(&mutex);
-        if( s > 0){
-            error(s, "pthread_mutex_lock");
-        }
-        if( isEmpty() ){
-           // printf("Wait job read, thread (%ld)\n", pthread_self());
-            s = pthread_cond_wait(&jobReady, &mutex);
-            if( s > 0){
-                error(s, "pthread_cond_wait");
-            }
-        }
-        s = pthread_mutex_unlock(&mutex);
-        if( s > 0){
-            error(s, "pthread_mutex_unlock");
-        }
         
         /* Ensure there is a job to pop */
         s = pthread_mutex_lock(&mutex);
@@ -288,7 +267,6 @@ void sortThreaded(char** array, unsigned int count) {
             printf("Error <%d> on pthread_join\n", s);
             exit(-1);
         }
-        s = pthread_cond_signal(&jobReady);
     }
 
     if( threads != NULL ){
