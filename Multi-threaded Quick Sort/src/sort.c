@@ -37,7 +37,7 @@ int main(int argc, char *argv[]){
 
     
     start = clock();                /* Start counter */
-    setSortThreads(5);              /* Initialize threads for sorting */
+    setSortThreads(1);              /* Initialize threads for sorting */
     sortThreaded( array, count);    /* Sort the array */
     stop = clock();                 /* Stop the counter */
 
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]){
 
     /* Read array back and free all allocated memory */
     for( int i = 0; i < count; i++){
-        if( i < 5){
+        if( i < 10){
             printf("%s\n", array[i]);
         }
         free(array[i]);
