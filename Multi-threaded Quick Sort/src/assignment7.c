@@ -1,7 +1,7 @@
+#include <pthread.h>
 #include "assignment7.h"
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <errno.h>
 
@@ -60,12 +60,14 @@ static void pushJob(SortParams *p){
         queueTail->next = temp;
     
     queueTail = temp;
+
+    
 }
 
 /* Pop job off of jobQueue */
 static SortParams* popJob(){
     
-    if( isEmpty() ){         /* Edge case, return if queue empty */
+    while( isEmpty() ){         /* Edge case, return if queue empty */
         fprintf(stderr,"No job to pop\n");
         return NULL;
     }
@@ -76,7 +78,7 @@ static SortParams* popJob(){
     retData = temp->data;   /* Extract data */
 
     queueHead = temp->next;  /* Point head to next item in queue */
-    //free(temp);              /* Free allocated node */
+    free(temp);              /* Free allocated node */
 
     return retData;
 }
@@ -136,31 +138,32 @@ static void quickSort(void* p) {
             } else break;                   /* if i > j, this partitioning is done  */
         }
         
-        SortParams *first = malloc(sizeof(SortParams));
+        SortParams *first = malloc(sizeof(SortParams));                 /* Create space on heap for variable */
         first->array = array; first->left = left; first->right = j;
-        // quickSort(&first);
         produce(first);                  /* sort the left partition  */
 
-        SortParams *second = malloc(sizeof(SortParams));
+        SortParams *second = malloc(sizeof(SortParams));                /* Create space on heap for variable */
         second->array = array; second->left = i; second->right = right;
-        //quickSort(&second);
         produce(second);                 /* sort the right partition */
                 
     } else{
         insertSort(array,i,j);           /* for a small range use insert sort */
-        pthread_cond_signal(&jobReady);
+        pthread_cond_broadcast(&jobReady);
      }
 }
 
 /* Produce a job using input */
 static void *produce(SortParams *p){
+
     pthread_mutex_lock(&mutex);             // Lock mutex to acced job queue
-    pthread_mutex_lock(&jobMutex);
-    jobs++;
-    pthread_mutex_unlock(&jobMutex);
     pushJob(p);                             // push new SortParams onto queue
     pthread_cond_signal(&jobReady);         // Signal threads to wake up
-    pthread_mutex_unlock(&mutex);           // Unlock Mutex
+    pthread_mutex_lock(&jobMutex);          // Increment jobs count
+    jobs++;
+    pthread_mutex_unlock(&jobMutex);
+    pthread_mutex_unlock(&mutex);
+
+
 }
         
 
@@ -171,29 +174,34 @@ static void *consumer(){
     while(1){
         /* Wait on new job in queue */
         pthread_mutex_lock(&mutex);
-        while( isEmpty() ){
-            pthread_cond_wait(&jobReady, &mutex);
+        if( isEmpty() ){
+           // printf("Wait job read, thread (%ld)\n", pthread_self());
+           pthread_cond_wait(&jobReady, &mutex);
         }
+        pthread_mutex_unlock(&mutex);
+        
+        /* Ensure there is a job to pop */
+        pthread_mutex_lock(&mutex);
         if (!isEmpty()){
             temp = popJob();
+            jobs--;
         }
-
         pthread_mutex_unlock(&mutex);
+
         /* If job exists, sort the next one */
         if( temp != NULL ){
             quickSort( temp );
-            //free(temp);
-            pthread_mutex_lock(&jobMutex);
-            jobs--;
-            pthread_mutex_unlock(&jobMutex);
         }
 
-        printf("Jobs: %d\n", jobs);
+//        printf("%d\n",jobs);
+        pthread_mutex_lock(&jobMutex);
         if(jobs == 0){
-            pthread_cond_signal(&jobReady);
+            pthread_mutex_unlock(&jobMutex);
+            pthread_cond_broadcast(&jobReady);
+            
             return;
         }
-    
+        pthread_mutex_unlock(&jobMutex);
     }
 }
 
@@ -216,7 +224,6 @@ void sortThreaded(char** array, unsigned int count) {
 
     // Create each thread in pool and send to consumer
     for( i = 0; i < maximumThreads; i++){
-       printf("Creating thread %d\n", i);
        s = pthread_create(&threads[i], NULL, consumer, NULL);
        if( s > 0){
            printf("Error <%d> on pthread_create\n", s);
@@ -228,8 +235,9 @@ void sortThreaded(char** array, unsigned int count) {
 
     // Wait for thread to join before returning
     for( i = 0; i < maximumThreads; i++){
-        printf("Joining thread %d\n", i);
         s = pthread_join(threads[i], NULL);
+        pthread_cond_signal(&jobReady);
+        
         if( s > 0 ){
             printf("Error <%d> on pthread_join\n", s);
             exit(-1);

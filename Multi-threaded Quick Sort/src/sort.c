@@ -9,6 +9,11 @@
 #include <sys/stat.h>
 #include <time.h>
 
+// Compare function for qsort
+static int cmpfunc(const void* a, const void* b){
+    return strcmp( *(const char**)a, *(const char**)b);
+}
+
 int main(int argc, char *argv[]){
 
     FILE* fp;                                   /* File pointer to input */
@@ -35,9 +40,8 @@ int main(int argc, char *argv[]){
         count++;                                                        /* Increment index to end of array */
     }
 
-    
     start = clock();                /* Start counter */
-    setSortThreads(2);              /* Initialize threads for sorting */
+    setSortThreads(6);              /* Initialize threads for sorting */
     sortThreaded( array, count);    /* Sort the array */
     stop = clock();                 /* Stop the counter */
 
