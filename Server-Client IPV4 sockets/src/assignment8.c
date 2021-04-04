@@ -117,6 +117,7 @@ int server(){
         if( procId ){                                   // parent block
             // send output to stdout
             fprintf(stdout, "%s %d\n", hostName, connections);
+            fflush(stdout);
             close(connectfd);
         }else{                                          // child block
             // Create output of current time that is 19 bytes (including newline);
