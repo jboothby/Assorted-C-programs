@@ -19,12 +19,6 @@
 int server();                       // handles spinning up the server
 int client(const char *address);    // handles creating a client and connection
 
-// Simple method prints a usage error if command line arguments are wrong
-void usageMessage(){
-        printf("Usage:\n\t./assignment8 client address\n\t./assignment8 server\n\n"); 
-        exit(1);
-}
-
 // This funciton parses command line arguments and hands off to server and client
 int main(int argc, char const *argv[]){
 
@@ -36,18 +30,18 @@ int main(int argc, char const *argv[]){
         if(argc == 2){
             server();
         }else{
-            usageMessage();
+            exit(1);
         }
     // If client is first argument, and there are exactly two arguments, call client
     }else if( strcmp(argv[1], "client") == 0){
         if( argc == 3){
             client(argv[2]);
         }else{
-            usageMessage();
+            exit(1);
         }
-    // In any other case, print usage message and exit
+    // In any other case, exit
     }else{
-        usageMessage();
+        exit(1);
     }
     return 0;
 }
