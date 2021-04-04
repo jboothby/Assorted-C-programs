@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <time.h>
 
 #define PORT_NUM 49999          // Port for socket connection
 
@@ -38,7 +39,6 @@ int main(int argc, char const *argv[]){
 // Spin up a server on PORT_NUM and wait for a connection
 // Forks off new process for each connection
 int server(){
-    printf("Reached server\n");
     int err;
 
     // Declare socket and set options
@@ -75,43 +75,59 @@ int server(){
 
     // Go into accept (block and wait for connection) and fork loop
     int connectfd;
-    int connections = 0;                               // save number of connection attempts
     int length = sizeof(struct sockaddr_in);           // save to use in accept funtion call for brevity
     struct sockaddr_in clientAddr;                     // contains client address structure
+    int connections = 0;                               // save number of connection attempts
+    time_t currentTime;                                // Holds current time since epoch in seconds
+    char timeWrite[20] = {0};                          // Buffer to hold human readable version of date time
     for(;;){
         connectfd = accept(listenfd, (struct sockaddr*) &clientAddr, &length);      // wait on connection
         if( connectfd < 0 ){
             perror("accept");
             exit(-errno);
         }
+
         ++connections;  // increment connections
 
-        //TODO: Get address and resolve to hostname (getnameinfo())
+        // Get address and resolve to hostname
+        char hostName[NI_MAXHOST];
+        int hostEntry;
+        hostEntry = getnameinfo((struct sockaddr*) &clientAddr,
+                                sizeof(clientAddr),
+                                hostName,
+                                sizeof(hostName),
+                                NULL, 0, NI_NUMERICSERV);
+        if( hostEntry != 0 ){
+            fprintf(stderr, "Error %s\n", gai_strerror(hostEntry));
+            exit(1);
+        }
 
         // Fork off a child to handle the connection on a separate process
         int procId = fork();
         if( procId ){                                   // parent block
+            // send output to stdout
+            fprintf(stdout, "%s %d\n", hostName, connections);
             close(connectfd);
-            write(1, "Ready to accept another connection\n", 36);
         }else{                                          // child block
-            err = write(connectfd, "Test\n", 6);        // write a test string to output
+            // Create output of current time that is 19 bytes (including newline);
+            time(&currentTime);
+            strncpy(timeWrite, ctime(&currentTime), 18);
+            strcat(timeWrite, "\n");
+            
+            err = write(connectfd, timeWrite, strlen(timeWrite));        // write a test string to output
             if( err < 0 ){
                 perror("write");
                 exit(-errno);   
             }
+            exit(0);                    // exit the child
         }
         while(wait(NULL) > 0){};        // wait for all children to exit
     }
-
-   
-
     return 0;
 }
 
 // Attempts to connect to the specified address on PORT_NUM
 int client(const char *address){
-    printf("Reached client, address: %s\n", address);
-
     int socketfd;                               // socket file descriptor
     struct addrinfo serv, *actualData;          // address info for server
     memset(&serv, 0, sizeof(serv));             // zero out memory in struct
@@ -151,8 +167,5 @@ int client(const char *address){
             exit(-errno);
         }
     } 
-    
     return 0;
 }
-    
-  
