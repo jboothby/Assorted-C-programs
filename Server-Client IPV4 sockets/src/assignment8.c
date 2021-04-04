@@ -19,19 +19,35 @@
 int server();                       // handles spinning up the server
 int client(const char *address);    // handles creating a client and connection
 
+// Simple method prints a usage error if command line arguments are wrong
+void usageMessage(){
+        printf("Usage:\n\t./assignment8 client address\n\t./assignment8 server\n\n"); 
+        exit(1);
+}
 
 // This funciton parses command line arguments and hands off to server and client
 int main(int argc, char const *argv[]){
-    //You know the drill :)
+
     // Parse command line arguments
     assert(argc > 1);
+
+    // If first argument is "server" and there is exactly one argument, call server
     if( strcmp(argv[1], "server") == 0){
-        server();
+        if(argc == 2){
+            server();
+        }else{
+            usageMessage();
+        }
+    // If client is first argument, and there are exactly two arguments, call client
     }else if( strcmp(argv[1], "client") == 0){
-        client(argv[2]);
+        if( argc == 3){
+            client(argv[2]);
+        }else{
+            usageMessage();
+        }
+    // In any other case, print usage message and exit
     }else{
-        printf("Usage:\n\t./assignment8 client address\n\t./assignment8 server\n\n"); 
-        exit(1);
+        usageMessage();
     }
     return 0;
 }
@@ -98,7 +114,7 @@ int server(){
                                 sizeof(hostName),
                                 NULL, 0, NI_NUMERICSERV);
         if( hostEntry != 0 ){
-            fprintf(stderr, "Error %s\n", gai_strerror(hostEntry));
+            fprintf(stderr, "Error: %s\n", gai_strerror(hostEntry));
             exit(1);
         }
 
@@ -139,7 +155,7 @@ int client(const char *address){
     // Attempt to get get address info (dns lookup)
     err = getaddrinfo(address, "49999", &serv, &actualData);
     if( err ){
-        fprintf(stderr, "Error %s\n", gai_strerror(err));
+        fprintf(stderr, "Error: %s\n", gai_strerror(err));
         exit(-err);
     }
 
