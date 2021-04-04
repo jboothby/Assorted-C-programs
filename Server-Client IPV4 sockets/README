@@ -14,3 +14,8 @@ Server or client is specifiec by a command line argument
     The output is exactly 18 bytes plus an additional newline (for a total of 19 bytes)
     Example:"Wed Apr  1 12:30:2\n" 
 
+
+Use of makefile:
+    Compile: make
+    Compile and start in server mode: make server
+    Compile and start in client mode: make client
