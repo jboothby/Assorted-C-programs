@@ -19,13 +19,16 @@
 static int debug = 0;   // Debug flag for verbose output
 
 /* --------------------- Function Prototypes -------------------- */
-char* parseArgs(int c, char** v);           // Parse command line arguments
-int attemptConnection( const char *address);          // Handle spinning up client connection
+char* parseArgs(int c, char** v);                    // Parse command line arguments
+int attemptConnection( const char *address);         // Handle spinning up client connection
+char* getCommand();                                 // Prompt for and return string from stdin
 
 int main(int argc, char* argv[]){
 
     const char* hostname = parseArgs(argc, argv);
-    attemptConnection(hostname);
+    // attemptConnection(hostname);
+
+    printf("The command entered was <%s>\n", getCommand());
     
     return 0;
 }
@@ -70,6 +73,40 @@ int attemptConnection( const char* address){
 
     return 0;
 }
+/* Prompt user for a command and return the string */
+char* getCommand(){
+
+    int count = 0;          // current position in buffer
+    ssize_t actual;         // number read from read
+    char* inputString;      // buffer holds input string
+    char temp[1];           // holds current character
+    
+    actual = write(1, "Enter a command: ", strlen("Enter a command: "));
+    if( actual < 0 ){
+        perror("write");
+        exit(-1);
+    }
+
+    inputString = calloc(1, sizeof(char));
+
+    while( (actual = read(0, temp, 1)) > 0){
+        // Allocate space for new character and insert into buffer
+        // The count +2 ensure room for the null terminator
+        inputString = realloc(inputString, sizeof (char) * count + 2);
+        inputString[count++] = temp[0];
+        if( temp[0] == '\n' ){
+            break;
+        }
+    }
+    if( actual < 0 ){
+        perror("read");
+        exit(-1);
+    }
+
+    inputString[count+1] = '\0';    // add null terminator
+
+    return inputString;
+}    
 
 /* Parse through command line arguments. Set debug flag if needed, return hostname argument */
 char* parseArgs(int argnum, char** arguments){

@@ -12,3 +12,7 @@
 #include <unistd.h>
 #include <errno.h>
 
+int main(int argc, char * argv[]){
+    printf("Server Code\n");
+    return 0;
+}
