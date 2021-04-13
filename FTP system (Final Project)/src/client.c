@@ -22,8 +22,13 @@ static int debug = 0;   // Debug flag for verbose output
 char* parseArgs(int c, char** v);                           // Parse command line arguments
 int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
 char* getCommand();                                         // Prompt for and return string from stdin
-int processCommands(int commandfd);                            // Process commands
+int processCommands(int commandfd);                         // Process commands
+void serverWrite(char* command, int commandfd);             // Write to server
+char* serverRead(int sockfd);                               // Read from the specified socket
 
+
+
+/* Handles program control */
 int main(int argc, char* argv[]){
 
     const char* hostname;
@@ -36,21 +41,79 @@ int main(int argc, char* argv[]){
     return 0;
 }
 
+/* Get commands from user and process them appropriately */
 int processCommands(int commandfd){
 
-    ssize_t actualWrite, actualRead;       
     char *command;                          // Holds return from getCommand
-    char buf[1];                           // Buffer for response from server
+    char *serverResponse;                   // Holds response from server
 
     for(;;){
 
         command = getCommand();
     
-        if( strcmp(command, "Q\n") == 0 ){
+        if( strcmp(command, "exit\n") == 0 ){
+            serverWrite("Q\n", commandfd);
             free(command);
             printf("Exiting...\n");
             exit(0);
+        }else if( strcmp(command, "rls\n") == 0){
+            serverWrite("L\n", commandfd);
+            serverResponse = serverRead(commandfd);
+            printf("Server repsonse: %s\n", serverResponse);
+            free(serverResponse);
         }
+
+        free( command );
+    }
+}
+
+/* Read from the specified file descripter until newline or eof */
+char* serverRead(int commandfd){
+
+    ssize_t actualRead;
+    char buf[1];
+    int count;
+    char* serverResponse;
+
+    serverResponse = calloc(1, sizeof(char));
+
+    // Read server response into dynamic string
+    while( ( actualRead = read(commandfd, buf, 1) > 0)){
+
+        serverResponse = realloc(serverResponse, sizeof(char)* count + 2);
+        serverResponse[count++] = buf[0];
+
+        // Break loop if terminal character
+        if( buf[0] == '\n' || buf[0] == EOF ){
+            break;
+        }
+    }
+    if( actualRead < 0){
+        free( serverResponse);
+        perror("read");
+        exit(-1);
+    }
+    serverResponse[count+1] = '\0';  // add null terminator
+
+    printf("Server response is %s\n", serverResponse);
+
+    return serverResponse;
+}
+
+
+/* Writes to server, reads response from commandfd into dynamically allocated array */
+void serverWrite(char* command, int commandfd){    // Write and read to server
+
+        // Holds amount written
+        ssize_t actualWrite;
+
+        // Debug output
+        printf("Writing <");
+        for( int i = 0; i <= strlen(command); i++){
+            printf("(%d)", command[i]);
+        }
+        printf("> to server\n");
+        
 
         // Write command to server
         actualWrite = write(commandfd, command, strlen(command));
@@ -59,28 +122,7 @@ int processCommands(int commandfd){
             exit(-1);
         }
 
-        // Read server response
-        while( ( actualRead = read(commandfd, buf, 1) > 0)){
 
-            // Write server response to sdout
-            actualWrite = write(1, buf, actualRead);
-            if( actualWrite < 0 ){
-                perror("write");
-                exit(-1);
-            }
-
-            // Break loop if terminal character
-            if( buf[0] == '\n' || buf[0] == EOF ){
-                break;
-            }
-        }
-        if( actualRead < 0){
-            perror("read");
-            exit(-1);
-        }
-
-        free( command );
-    }
 }
 
 /* Create the sockets, resolve address, then connect on specified port */
