@@ -14,7 +14,7 @@
 #include <errno.h>
 
 /* ------------------- Defines and Globals ---------------------- */
-#define PORTNUM 37897   // Port number for connection to server
+#define PORTNUM 37896   // Port number for connection to server
 
 static int debug = 0;   // Debug flag for verbose output
 
@@ -26,10 +26,8 @@ char* getCommand();                                 // Prompt for and return str
 int main(int argc, char* argv[]){
 
     const char* hostname = parseArgs(argc, argv);
-    // attemptConnection(hostname);
+    attemptConnection(hostname);
 
-    printf("The command entered was <%s>\n", getCommand());
-    
     return 0;
 }
 
@@ -37,6 +35,9 @@ int main(int argc, char* argv[]){
 int attemptConnection( const char* address){
     int sockfd;                             // socket file descriptor
     int err;                                // Holds error code
+    ssize_t actualWrite, actualRead;       
+    char *command;                          // Holds return from getCommand
+    char buf[1];                           // Buffer for response from server
 
     struct addrinfo serv, *actualData;      // address info for the server
     memset(&serv, 0, sizeof(serv));         
@@ -68,8 +69,46 @@ int attemptConnection( const char* address){
         exit(-1);
     }
 
-    write(sockfd, "Q\n", 3);
-    printf("Wrote Q\\n to sockfd\n");
+    // Loop infinite and get input. Will break on quit command
+    for(;;){
+
+        command = getCommand();
+    
+        if( strcmp(command, "Q\n") == 0 ){
+            free(command);
+            printf("Exiting...\n");
+            exit(0);
+        }
+
+        // Write command to server
+        actualWrite = write(sockfd, command, strlen(command));
+        if( actualWrite < 0 ){
+            perror("write");
+            exit(-1);
+        }
+
+        // Read server response
+        while( ( actualRead = read(sockfd, buf, 1) > 0)){
+
+            // Write server response to sdout
+            actualWrite = write(1, buf, actualRead);
+            if( actualWrite < 0 ){
+                perror("write");
+                exit(-1);
+            }
+
+            // Break loop if terminal character
+            if( buf[0] == '\n' || buf[0] == EOF ){
+                break;
+            }
+        }
+        if( actualRead < 0){
+            perror("read");
+            exit(-1);
+        }
+
+        free( command );
+    }
 
     return 0;
 }
