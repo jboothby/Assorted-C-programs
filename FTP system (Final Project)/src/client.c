@@ -19,25 +19,74 @@
 static int debug = 0;   // Debug flag for verbose output
 
 /* --------------------- Function Prototypes -------------------- */
-char* parseArgs(int c, char** v);                    // Parse command line arguments
-int attemptConnection( const char *address);         // Handle spinning up client connection
-char* getCommand();                                 // Prompt for and return string from stdin
+char* parseArgs(int c, char** v);                           // Parse command line arguments
+int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
+char* getCommand();                                         // Prompt for and return string from stdin
+int processCommands(int commandfd);                            // Process commands
 
 int main(int argc, char* argv[]){
 
-    const char* hostname = parseArgs(argc, argv);
-    attemptConnection(hostname);
+    const char* hostname;
+    int commandfd;
+
+    hostname = parseArgs(argc, argv);
+    commandfd = attemptConnection(hostname, PORTNUM);
+    processCommands(commandfd);
 
     return 0;
 }
 
-/* Create the sockets, resolve address, then connect on specified port */
-int attemptConnection( const char* address){
-    int sockfd;                             // socket file descriptor
-    int err;                                // Holds error code
+int processCommands(int commandfd){
+
     ssize_t actualWrite, actualRead;       
     char *command;                          // Holds return from getCommand
     char buf[1];                           // Buffer for response from server
+
+    for(;;){
+
+        command = getCommand();
+    
+        if( strcmp(command, "Q\n") == 0 ){
+            free(command);
+            printf("Exiting...\n");
+            exit(0);
+        }
+
+        // Write command to server
+        actualWrite = write(commandfd, command, strlen(command));
+        if( actualWrite < 0 ){
+            perror("write");
+            exit(-1);
+        }
+
+        // Read server response
+        while( ( actualRead = read(commandfd, buf, 1) > 0)){
+
+            // Write server response to sdout
+            actualWrite = write(1, buf, actualRead);
+            if( actualWrite < 0 ){
+                perror("write");
+                exit(-1);
+            }
+
+            // Break loop if terminal character
+            if( buf[0] == '\n' || buf[0] == EOF ){
+                break;
+            }
+        }
+        if( actualRead < 0){
+            perror("read");
+            exit(-1);
+        }
+
+        free( command );
+    }
+}
+
+/* Create the sockets, resolve address, then connect on specified port */
+int attemptConnection( const char* address, int pnum){
+    int sockfd;                             // socket file descriptor
+    int err;                                // Holds error code
 
     struct addrinfo serv, *actualData;      // address info for the server
     memset(&serv, 0, sizeof(serv));         
@@ -45,8 +94,8 @@ int attemptConnection( const char* address){
     serv.ai_socktype = SOCK_STREAM;         
     serv.ai_family = AF_INET;   
     
-    char port[6];                           // Length 6 because port max is 65535 + \n
-    sprintf(port, "%d", PORTNUM);           // convert portnum to string for dns lookup
+    char port[6];                        // Length 6 because port max is 65535 + \0
+    sprintf(port, "%d", pnum);           // convert portnum to string for dns lookup
     
     // Dns lookup
     err = getaddrinfo(address, port, &serv, &actualData);
@@ -69,48 +118,7 @@ int attemptConnection( const char* address){
         exit(-1);
     }
 
-    // Loop infinite and get input. Will break on quit command
-    for(;;){
-
-        command = getCommand();
-    
-        if( strcmp(command, "Q\n") == 0 ){
-            free(command);
-            printf("Exiting...\n");
-            exit(0);
-        }
-
-        // Write command to server
-        actualWrite = write(sockfd, command, strlen(command));
-        if( actualWrite < 0 ){
-            perror("write");
-            exit(-1);
-        }
-
-        // Read server response
-        while( ( actualRead = read(sockfd, buf, 1) > 0)){
-
-            // Write server response to sdout
-            actualWrite = write(1, buf, actualRead);
-            if( actualWrite < 0 ){
-                perror("write");
-                exit(-1);
-            }
-
-            // Break loop if terminal character
-            if( buf[0] == '\n' || buf[0] == EOF ){
-                break;
-            }
-        }
-        if( actualRead < 0){
-            perror("read");
-            exit(-1);
-        }
-
-        free( command );
-    }
-
-    return 0;
+    return sockfd;
 }
 /* Prompt user for a command and return the string */
 char* getCommand(){
