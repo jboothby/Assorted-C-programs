@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fdio.h>
 
 /* ------------------- Defines and Globals ---------------------- */
 #define PORTNUM 37896   // Port number for connection to server
@@ -21,10 +22,7 @@ static int debug = 0;   // Debug flag for verbose output
 /* --------------------- Function Prototypes -------------------- */
 char* parseArgs(int c, char** v);                           // Parse command line arguments
 int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
-char* readFromFd(int fd);                                   // Prompt for and return string from stdin
 int processCommands(int commandfd);                         // Process commands
-void serverWrite(char* command, int commandfd);             // Write to server
-
 
 /* Handles program control */
 int main(int argc, char* argv[]){
@@ -50,12 +48,12 @@ int processCommands(int commandfd){
         command = readFromFd(0);
     
         if( strcmp(command, "exit\n") == 0 ){
-            serverWrite("Q\n", commandfd);
+            writeToFd("Q\n", commandfd);
             free(command);
             printf("Exiting...\n");
             exit(0);
         }else if( strcmp(command, "rls\n") == 0){
-            serverWrite("L\n", commandfd);
+            writeToFd("L\n", commandfd);
             serverResponse = readFromFd(commandfd);
             printf("Server repsonse: %s\n", serverResponse);
             free(serverResponse);
@@ -63,30 +61,6 @@ int processCommands(int commandfd){
 
         free( command );
     }
-}
-
-/* Writes to server, reads response from commandfd into dynamically allocated array */
-void serverWrite(char* command, int commandfd){    // Write and read to server
-
-        // Holds amount written
-        ssize_t actualWrite;
-
-        // Debug output
-        printf("Writing <");
-        for( int i = 0; i <= strlen(command); i++){
-            printf("(%d)", command[i]);
-        }
-        printf("> to server\n");
-        
-
-        // Write command to server
-        actualWrite = write(commandfd, command, strlen(command));
-        if( actualWrite < 0 ){
-            perror("write");
-            exit(-1);
-        }
-
-
 }
 
 /* Create the sockets, resolve address, then connect on specified port */
@@ -126,45 +100,6 @@ int attemptConnection( const char* address, int pnum){
 
     return sockfd;
 }
-/* Read a newline terminated string from the fd string */
-/* Prompt user for command if fd is stdin */
-char* readFromFd(int fd){
-
-    int count = 0;          // current position in buffer
-    ssize_t actual;         // number read from read
-    char* fdString;         // buffer holds input string
-    char temp[1];           // holds current character
-    
-    // Prompt user for input if fd is stdin
-    if( fd == 0){
-        actual = write(1, "Enter a command: ", strlen("Enter a command: "));
-        if( actual < 0 ){
-            perror("write");
-            exit(-1);
-        }
-    }
-
-    // Allocate space for first character
-    fdString = calloc(1, sizeof(char));
-
-    while( (actual = read(fd, temp, 1)) > 0){
-        // Allocate space for new character and insert into buffer
-        // The count +2 ensure room for the null terminator
-        fdString = realloc(fdString, sizeof (char) * count + 2);
-        fdString[count++] = temp[0];
-        if( temp[0] == '\n' ){
-            break;
-        }
-    }
-    if( actual < 0 ){
-        perror("read");
-        exit(-1);
-    }
-
-    fdString[count+1] = '\0';    // add null terminator
-
-    return fdString;
-}    
 
 /* Parse through command line arguments. Set debug flag if needed, return hostname argument */
 char* parseArgs(int argnum, char** arguments){
