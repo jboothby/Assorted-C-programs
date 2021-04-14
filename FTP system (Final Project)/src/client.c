@@ -21,11 +21,9 @@ static int debug = 0;   // Debug flag for verbose output
 /* --------------------- Function Prototypes -------------------- */
 char* parseArgs(int c, char** v);                           // Parse command line arguments
 int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
-char* getCommand();                                         // Prompt for and return string from stdin
+char* readFromFd(int fd);                                   // Prompt for and return string from stdin
 int processCommands(int commandfd);                         // Process commands
 void serverWrite(char* command, int commandfd);             // Write to server
-char* serverRead(int sockfd);                               // Read from the specified socket
-
 
 
 /* Handles program control */
@@ -44,12 +42,12 @@ int main(int argc, char* argv[]){
 /* Get commands from user and process them appropriately */
 int processCommands(int commandfd){
 
-    char *command;                          // Holds return from getCommand
+    char *command;                          // Holds return from readFromFd for stdin
     char *serverResponse;                   // Holds response from server
 
     for(;;){
 
-        command = getCommand();
+        command = readFromFd(0);
     
         if( strcmp(command, "exit\n") == 0 ){
             serverWrite("Q\n", commandfd);
@@ -58,7 +56,7 @@ int processCommands(int commandfd){
             exit(0);
         }else if( strcmp(command, "rls\n") == 0){
             serverWrite("L\n", commandfd);
-            serverResponse = serverRead(commandfd);
+            serverResponse = readFromFd(commandfd);
             printf("Server repsonse: %s\n", serverResponse);
             free(serverResponse);
         }
@@ -66,40 +64,6 @@ int processCommands(int commandfd){
         free( command );
     }
 }
-
-/* Read from the specified file descripter until newline or eof */
-char* serverRead(int commandfd){
-
-    ssize_t actualRead;
-    char buf[1];
-    int count;
-    char* serverResponse;
-
-    serverResponse = calloc(1, sizeof(char));
-
-    // Read server response into dynamic string
-    while( ( actualRead = read(commandfd, buf, 1) > 0)){
-
-        serverResponse = realloc(serverResponse, sizeof(char)* count + 2);
-        serverResponse[count++] = buf[0];
-
-        // Break loop if terminal character
-        if( buf[0] == '\n' || buf[0] == EOF ){
-            break;
-        }
-    }
-    if( actualRead < 0){
-        free( serverResponse);
-        perror("read");
-        exit(-1);
-    }
-    serverResponse[count+1] = '\0';  // add null terminator
-
-    printf("Server response is %s\n", serverResponse);
-
-    return serverResponse;
-}
-
 
 /* Writes to server, reads response from commandfd into dynamically allocated array */
 void serverWrite(char* command, int commandfd){    // Write and read to server
@@ -162,27 +126,32 @@ int attemptConnection( const char* address, int pnum){
 
     return sockfd;
 }
-/* Prompt user for a command and return the string */
-char* getCommand(){
+/* Read a newline terminated string from the fd string */
+/* Prompt user for command if fd is stdin */
+char* readFromFd(int fd){
 
     int count = 0;          // current position in buffer
     ssize_t actual;         // number read from read
-    char* inputString;      // buffer holds input string
+    char* fdString;         // buffer holds input string
     char temp[1];           // holds current character
     
-    actual = write(1, "Enter a command: ", strlen("Enter a command: "));
-    if( actual < 0 ){
-        perror("write");
-        exit(-1);
+    // Prompt user for input if fd is stdin
+    if( fd == 0){
+        actual = write(1, "Enter a command: ", strlen("Enter a command: "));
+        if( actual < 0 ){
+            perror("write");
+            exit(-1);
+        }
     }
 
-    inputString = calloc(1, sizeof(char));
+    // Allocate space for first character
+    fdString = calloc(1, sizeof(char));
 
-    while( (actual = read(0, temp, 1)) > 0){
+    while( (actual = read(fd, temp, 1)) > 0){
         // Allocate space for new character and insert into buffer
         // The count +2 ensure room for the null terminator
-        inputString = realloc(inputString, sizeof (char) * count + 2);
-        inputString[count++] = temp[0];
+        fdString = realloc(fdString, sizeof (char) * count + 2);
+        fdString[count++] = temp[0];
         if( temp[0] == '\n' ){
             break;
         }
@@ -192,9 +161,9 @@ char* getCommand(){
         exit(-1);
     }
 
-    inputString[count+1] = '\0';    // add null terminator
+    fdString[count+1] = '\0';    // add null terminator
 
-    return inputString;
+    return fdString;
 }    
 
 /* Parse through command line arguments. Set debug flag if needed, return hostname argument */
