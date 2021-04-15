@@ -27,6 +27,7 @@ char* parseArgs(int c, char** v);                           // Parse command lin
 int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
 int processCommands(int commandfd);                         // Process commands
 char** tokenSplit(char* string);                            // Split string into space separated tokens
+int cdLocal(char* path);                                    // cd to path on local machine
 
 /* Handles program control */
 int main(int argc, char* argv[]){
@@ -45,13 +46,16 @@ int main(int argc, char* argv[]){
 int processCommands(int commandfd){
 
     char *command;                          // Holds return from readFromFd for stdin
-    char **tokens;                          // Result of splitting command into tokens
+    char **tokens = NULL;                   // Result of splitting command into tokens
     char *serverResponse;                   // Holds response from server
+    int pipefd[2];                          // Array for pipe fd
+    int err, rdr, wtr;
+    
 
     for(;;){
 
         command = readFromFd(0);
-        tokens = tokenSplit(command);
+        while( (tokens = tokenSplit(command)) == NULL);
         printf("Tokens: <%s><%s>\n", tokens[0], tokens[1]);
         free(command);
         
@@ -74,18 +78,51 @@ int processCommands(int commandfd){
             exit(0);
 
         }else if( strcmp(tokens[0], "cd") == 0){
-            // TODO: Implement local CD, no server comms needed
-            printf("Reached cd execution block\n");
+            if(debug){
+                printf("Changing directory to %s\n", tokens[1]);
+            }
+            err = chdir(tokens[1]);
+            if( err < 0 ){
+                perror("chdir");
+            }
 
         }else if( strcmp(tokens[0], "rcd") == 0){
             // TODO: Implement remote CD, no data connectio needed
             // Do regex matching on input
             printf("Reached rcd execution block\n");
 
+        /* LS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "ls") == 0){
-            // TODO: Implment local LS, no server comms needed
-            printf("Reached ls exeuction block\n");
+            printf("Reached ls execution block\n");
 
+            // Fork program to execute ls and more
+            if( fork() ){// parent (main)
+                wait(&err);
+                if( err < 0 ){
+                    perror("pipe");
+                }
+            }else{// Outer child
+                // Set up pipe
+                if( pipe(pipefd) < 0 ){
+                    perror("pipe");
+                    break;
+                }
+                rdr = pipefd[0]; wtr = pipefd[1];
+
+                if( fork() ){
+                    close(wtr);
+                    close(0); dup(rdr); close(rdr);     // make stdin go to reader
+                    if( execlp("more", "-20", (char *) NULL) == -1){
+                        perror("exec");
+                    }
+                }else{
+                    close(rdr);
+                    close(1); dup(wtr); close(wtr); // make stdout go to writer
+                    if( execlp("ls", "-l", (char *) NULL) == -1){
+                        perror("exec");
+                    }
+                }
+            }
         }else if( strcmp(tokens[0], "rls") == 0){
             writeToFd("L\n", commandfd);
             serverResponse = readFromFd(commandfd);
@@ -110,13 +147,11 @@ int processCommands(int commandfd){
 
         }
 
-        printf("Freeing tokens\n");
-
         free(tokens[0]);
         free(tokens[1]);
         free(tokens);
-
     }
+    return 0;
 }
 
 /* Create the sockets, resolve address, then connect on specified port */
@@ -220,8 +255,7 @@ char** tokenSplit(char* string){
             currentToken++;
             if( currentToken > 1 ){
                 fprintf(stderr, "User input contained too many tokens\n");
-                tokens[0] = "";
-                tokens[1] = "";
+                tokens = NULL;
                 return tokens;
             }
             lastCharWasSpace = 0;
