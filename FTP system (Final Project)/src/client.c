@@ -121,13 +121,13 @@ int processCommands(const char* hostname, int commandfd){
         /* LS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "ls") == 0){
             if( lsLocal() < 0  && debug){
-                fprintf(stdout, "ls command did not execute properly\n");
+                writeToFd(2, "ls command did not execute properly\n");
             }
 
         /* RLS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rls") == 0){
             if( lsRemote(hostname, commandfd) < 0){
-                fprintf(stdout, "rls command did not execute properly\n");
+                writeToFd(2, "rls command did not execute properly\n");
             }
 
         }else if( strcmp(tokens[0], "get") == 0){
@@ -362,13 +362,14 @@ int makeDataConnection(const char* hostname, int commandfd){
         // Write command to server to open data socket
         writeToFd(commandfd, "D\n");
         serverResponse = readFromFd(commandfd);
-        printf("Server response to D: <%s>\n", serverResponse);
 
+        // If server sends back error, print it
         if ( serverResponse[0] == 'E'){
             fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
             free( serverResponse );
             return(-1);
         }else{
+            // If server sends back port number, connect to it
             substr = serverResponse + 1;
             if( debug )
                 printf("Attempting connection on portnum: <%s>\n", substr);
