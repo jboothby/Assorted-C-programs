@@ -35,6 +35,7 @@ char** tokenSplit(char* string);                            // Split string into
 int cdLocal(char* path);                                    // cd to path on local machine
 int lsLocal();                                              // execute ls command on local
 int lsRemote(const char* address, int commandfd);           // execute ls on server
+int cdRemote(const char* path, int commandfd);              // execute cd on server
 int makeDataConnection(const char* hostname, int commandfd);// self explanatory
 
 /* Handles program control */
@@ -114,18 +115,21 @@ int processCommands(const char* hostname, int commandfd){
 
         /* RCD COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rcd") == 0){
-            // TODO: Implement remote CD, no data connectio needed
-            // Do regex matching on input
-            printf("Reached rcd execution block\n");
+
+            if( cdRemote(tokens[1], commandfd) < 0  && debug){
+                writeToFd(2, "rcd command did not execute properly\n");
+            }
 
         /* LS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "ls") == 0){
+
             if( lsLocal() < 0  && debug){
                 writeToFd(2, "ls command did not execute properly\n");
             }
 
         /* RLS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rls") == 0){
+
             if( lsRemote(hostname, commandfd) < 0){
                 writeToFd(2, "rls command did not execute properly\n");
             }
@@ -378,4 +382,28 @@ int makeDataConnection(const char* hostname, int commandfd){
             free(serverResponse);
         }
         return datafd;
+}
+
+/* Execute the cd command on server */
+/* Returns 0 on success, -1 on error */
+int cdRemote(const char* path, int commandfd){
+            char *serverResponse;
+
+            // Create command string using path
+            char cdWithPath[strlen(path) + 3];    // for C, Path, \n, \0
+            sprintf(cdWithPath, "C%s\n", path);
+
+            // Write command to server
+            writeToFd(commandfd, cdWithPath);
+
+            // Grab server response
+            serverResponse = readFromFd(commandfd);
+            if( serverResponse[0] == 'E' ){
+                fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+                free( serverResponse );
+                return -1;
+            }
+
+            free(serverResponse);
+            return 0;
 }
