@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fdio.h>
 #include <dirent.h>
+#include <ctype.h>
 
 /* ------------------- Defines and Globals ---------------------- */
 #define PORTNUM 37896   // Port number for connection to server
@@ -51,45 +52,70 @@ int processCommands(int commandfd){
 
         command = readFromFd(0);
         tokens = tokenSplit(command);
+        printf("Tokens: <%s><%s>\n", tokens[0], tokens[1]);
+        free(command);
+        
 
-        if( strcmp(command, "exit\n") == 0 ){
+        if( strcmp(tokens[0], "exit") == 0 ){
+
             writeToFd("Q\n", commandfd);
             serverResponse = readFromFd(commandfd);
             printf("Server response: %s", serverResponse);
-            free(command);
+            
+            free(tokens[0]);
+            free(tokens[1]);
+            free(tokens);
             free(serverResponse);
+
+            close(commandfd);
+
             printf("Exiting...\n");
+
             exit(0);
-        }else if( strcmp(command, "cd\n") == 0){
+
+        }else if( strcmp(tokens[0], "cd") == 0){
             // TODO: Implement local CD, no server comms needed
             printf("Reached cd execution block\n");
-        }else if( strcmp(command, "rcd\n") == 0){
+
+        }else if( strcmp(tokens[0], "rcd") == 0){
             // TODO: Implement remote CD, no data connectio needed
             // Do regex matching on input
             printf("Reached rcd execution block\n");
-        }else if( strcmp(command, "ls\n") == 0){
+
+        }else if( strcmp(tokens[0], "ls") == 0){
             // TODO: Implment local LS, no server comms needed
             printf("Reached ls exeuction block\n");
-        }else if( strcmp(command, "rls\n") == 0){
+
+        }else if( strcmp(tokens[0], "rls") == 0){
             writeToFd("L\n", commandfd);
             serverResponse = readFromFd(commandfd);
             printf("Server repsonse: %s\n", serverResponse);
             free(serverResponse);
-        }else if( strcmp(command, "get\n") == 0){
+
+        }else if( strcmp(tokens[0], "get") == 0){
             // TODO: Implement get (stream file through fd)
             // Init data connection
             printf("Reached get execution block\n");
-        }else if( strcmp(command, "put\n") == 0){
+
+        }else if( strcmp(tokens[0], "put") == 0){
             // TODO: Implment put (stream file through fd)
             // Init data connection
             printf("Reached put execution block\n");
-        }else if( strcmp(command, "show\n") == 0){
+
+        }else if( strcmp(tokens[0], "show") == 0){
             printf("Reached show execution block\n");
+
         }else{
-            printf("Command %s not recognized\n", command);
+            printf("Command %s not recognized\n", tokens[0]);
+
         }
 
-        free( command );
+        printf("Freeing tokens\n");
+
+        free(tokens[0]);
+        free(tokens[1]);
+        free(tokens);
+
     }
 }
 
@@ -128,6 +154,8 @@ int attemptConnection( const char* address, int pnum){
         exit(-1);
     }
 
+    freeaddrinfo(actualData);
+
     return sockfd;
 }
 
@@ -165,10 +193,10 @@ char* parseArgs(int argnum, char** arguments){
 }
 
 /* Split the supplied string around spaces into an array of string tokens */
+/* Returns a string array where first string is the command, and second is the parameter */
 char** tokenSplit(char* string){
 
-    printf("Reached token split \n");
-    char* command = calloc(4, sizeof(char));                 // Limited to longest command + \0
+    char* command = calloc(5, sizeof(char));                 // Limited to longest command + \0
     char* parameter = calloc( PATH_MAX + 2, sizeof(char));;  // Should be limited to max size of path + \n and \0
     char** tokens = calloc(2, sizeof(char*));
 
@@ -179,12 +207,10 @@ char** tokenSplit(char* string){
     int currentChar = 0;
     int lastCharWasSpace = 0;       // Flag to determine if last char was space
 
-    printf("Beginning loop \n");
-
     // Loop over characters in string
     for(int i = 0; i < strlen(string); i++){
         // Skip spaces, set last space flag, reset char count to 0
-        if( string[i] == ' ' ){
+        if( isspace(string[i]) ){
             currentChar = 0;
             lastCharWasSpace = 1;
             continue;
@@ -192,18 +218,22 @@ char** tokenSplit(char* string){
         // Increment token count if last space was char (new word)
         if( lastCharWasSpace){
             currentToken++;
+            if( currentToken > 1 ){
+                fprintf(stderr, "User input contained too many tokens\n");
+                tokens[0] = "";
+                tokens[1] = "";
+                return tokens;
+            }
             lastCharWasSpace = 0;
         }
         if( currentToken < 0 ){
             currentToken = 0;
         }
-        printf("Putting char %c into spot %d of token %d\n", string[i], currentChar, currentToken);
         // Place char in correct spot and increment char
         tokens[currentToken][currentChar] = string[i];
         currentChar ++;
-    }
 
-    printf("Split %s into tokens: <%s>, <%s>\n", string, tokens[0], tokens[1]);
+    }
 
     return tokens;
 }

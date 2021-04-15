@@ -55,7 +55,7 @@ char* readFromFd(int fd){
     while( (actual = read(fd, temp, 1)) > 0){
         // Allocate space for new character and insert into buffer
         // The count +2 ensure room for the null terminator
-        fdString = realloc(fdString, sizeof (char) * count + 2);
+        fdString = realloc(fdString, sizeof (char) * (count + 2));
         fdString[count++] = temp[0];
         if( temp[0] == '\n' ){
             break;
@@ -66,7 +66,7 @@ char* readFromFd(int fd){
         exit(-1);
     }
 
-    fdString[count+1] = '\0';    // add null terminator
+    fdString[count] = '\0';    // add null terminator
 
     return fdString;
 }    
