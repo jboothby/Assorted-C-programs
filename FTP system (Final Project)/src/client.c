@@ -22,12 +22,20 @@
 
 static int debug = 0;   // Debug flag for verbose output
 
+/* ------------------- Define terminal output colors ----------- */
+#define KGRN "\x1b[32m"
+#define KRED "\x1b[31m"
+#define KWHT "\x1b[37m"
+
 /* --------------------- Function Prototypes -------------------- */
 char* parseArgs(int c, char** v);                           // Parse command line arguments
 int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
-int processCommands(int commandfd);                         // Process commands
+int processCommands(const char* hostname, int commandfd);   // Process commands
 char** tokenSplit(char* string);                            // Split string into space separated tokens
 int cdLocal(char* path);                                    // cd to path on local machine
+int lsLocal();                                              // execute ls command on local
+int lsRemote(const char* address, int commandfd);           // execute ls on server
+int makeDataConnection(const char* hostname, int commandfd);// self explanatory
 
 /* Handles program control */
 int main(int argc, char* argv[]){
@@ -37,55 +45,74 @@ int main(int argc, char* argv[]){
 
     hostname = parseArgs(argc, argv);
     commandfd = attemptConnection(hostname, PORTNUM);
-    processCommands(commandfd);
+    processCommands(hostname, commandfd);
 
     return 0;
 }
 
 /* Get commands from user and process them appropriately */
-int processCommands(int commandfd){
+int processCommands(const char* hostname, int commandfd){
 
     char *command;                          // Holds return from readFromFd for stdin
     char **tokens = NULL;                   // Result of splitting command into tokens
     char *serverResponse;                   // Holds response from server
-    int pipefd[2];                          // Array for pipe fd
-    int err, rdr, wtr;
+    int err;
     
 
     for(;;){
 
+        // Read command from stdin, then split into tokens
         command = readFromFd(0);
-        while( (tokens = tokenSplit(command)) == NULL);
-        printf("Tokens: <%s><%s>\n", tokens[0], tokens[1]);
+        if( (tokens = tokenSplit(command)) == NULL){
+            free(command);
+            continue;
+        }
         free(command);
+
+        err = 0;       // reset err variable
         
 
+        /* EXIT COMMAND EXECUTION BLOCK */
         if( strcmp(tokens[0], "exit") == 0 ){
 
-            writeToFd("Q\n", commandfd);
+            // Write command to server, and read response 
+            writeToFd(commandfd, "Q\n");
             serverResponse = readFromFd(commandfd);
             printf("Server response: %s", serverResponse);
             
+            // Free allocated memory
             free(tokens[0]);
             free(tokens[1]);
             free(tokens);
             free(serverResponse);
 
+            // Close socket
             close(commandfd);
 
             printf("Exiting...\n");
 
             exit(0);
 
+        /* CD COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "cd") == 0){
-            if(debug){
-                printf("Changing directory to %s\n", tokens[1]);
-            }
+            char currentDir[PATH_MAX];
+
+            // Change directory
             err = chdir(tokens[1]);
             if( err < 0 ){
                 perror("chdir");
             }
 
+            // Output change if debug flag set
+            if( debug ){
+                getcwd(currentDir, PATH_MAX);
+                if( currentDir == NULL){
+                    perror("getcwd");
+                }
+                printf("Directory changed to %s\n", currentDir);
+            }
+
+        /* RCD COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rcd") == 0){
             // TODO: Implement remote CD, no data connectio needed
             // Do regex matching on input
@@ -93,41 +120,15 @@ int processCommands(int commandfd){
 
         /* LS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "ls") == 0){
-            printf("Reached ls execution block\n");
-
-            // Fork program to execute ls and more
-            if( fork() ){// parent (main)
-                wait(&err);
-                if( err < 0 ){
-                    perror("pipe");
-                }
-            }else{// Outer child
-                // Set up pipe
-                if( pipe(pipefd) < 0 ){
-                    perror("pipe");
-                    break;
-                }
-                rdr = pipefd[0]; wtr = pipefd[1];
-
-                if( fork() ){
-                    close(wtr);
-                    close(0); dup(rdr); close(rdr);     // make stdin go to reader
-                    if( execlp("more", "-20", (char *) NULL) == -1){
-                        perror("exec");
-                    }
-                }else{
-                    close(rdr);
-                    close(1); dup(wtr); close(wtr); // make stdout go to writer
-                    if( execlp("ls", "-l", (char *) NULL) == -1){
-                        perror("exec");
-                    }
-                }
+            if( lsLocal() < 0  && debug){
+                fprintf(stdout, "ls command did not execute properly\n");
             }
+
+        /* RLS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rls") == 0){
-            writeToFd("L\n", commandfd);
-            serverResponse = readFromFd(commandfd);
-            printf("Server repsonse: %s\n", serverResponse);
-            free(serverResponse);
+            if( lsRemote(hostname, commandfd) < 0){
+                fprintf(stdout, "rls command did not execute properly\n");
+            }
 
         }else if( strcmp(tokens[0], "get") == 0){
             // TODO: Implement get (stream file through fd)
@@ -270,4 +271,110 @@ char** tokenSplit(char* string){
     }
 
     return tokens;
+}
+
+/* Executes ls -l | more -20 on client side */
+int lsLocal(){
+    int pipefd[2];
+    int err, rdr, wtr;
+
+    // Fork program to execute ls and more
+    if( fork() ){// Parent just waits on children to exit
+        wait(&err);
+        if( err < 0 ){
+            perror("pipe");
+            return -1;
+        }
+    }else{// Child process forks again to run each program
+
+        // Initiate pipe and rename reader and writer sides
+        if( pipe(pipefd) < 0 ){
+            perror("pipe");
+            return -1;
+        }
+        rdr = pipefd[0]; wtr = pipefd[1];
+
+        if( fork() ){   // Execute more -20 in the parent
+            close(wtr);
+            close(0); dup(rdr); close(rdr);     // make stdin go to reader
+            if( execlp("more", "-20", (char *) NULL) == -1){
+                perror("exec");
+                return -1;
+            }
+        }else{          // Execute ls -l in the child
+            close(rdr);
+            close(1); dup(wtr); close(wtr); // make stdout go to writer
+            if( execlp("ls", "-l", (char *) NULL) == -1){
+                perror("exec");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/* Execute ls -l | more -20 on server side */
+int lsRemote(const char* hostname, int commandfd){
+        char* serverResponse;
+        int datafd, actualRead;
+        char buf[256];
+
+        // Make data connection, and continue if successful
+        if( (datafd = makeDataConnection(hostname, commandfd)) > 0){
+
+            // Write ls command to server
+            writeToFd(commandfd, "L\n");
+            serverResponse = readFromFd(commandfd);
+            // Return if error
+            if( serverResponse[0] == 'E'){
+                fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+                free( serverResponse );
+                close(datafd);
+                return -1;
+            }
+            free(serverResponse);
+
+            // Read from connection and write to stdout
+            while( (actualRead = read(datafd, buf, sizeof(buf) / sizeof(char))) > 0){
+                if( write(1, buf, actualRead) < 0 ){
+                    perror("write");
+                }
+            }
+            if( actualRead < 0 ){
+                perror("read");
+            }
+
+            close(datafd);
+            return 0;
+        }
+
+        close(datafd);
+        return -1;
+}
+
+/* Initiate the data connection, return the fd */
+int makeDataConnection(const char* hostname, int commandfd){
+        char* serverResponse;
+        char* substr;
+        int datafd;
+    
+        // Write command to server to open data socket
+        writeToFd(commandfd, "D\n");
+        serverResponse = readFromFd(commandfd);
+        printf("Server response to D: <%s>\n", serverResponse);
+
+        if ( serverResponse[0] == 'E'){
+            fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+            free( serverResponse );
+            return(-1);
+        }else{
+            substr = serverResponse + 1;
+            if( debug )
+                printf("Attempting connection on portnum: <%s>\n", substr);
+            // Convert string number to integer, and make connection on that port
+            datafd = attemptConnection(hostname, atoi(substr)); 
+            free(serverResponse);
+        }
+        return datafd;
 }

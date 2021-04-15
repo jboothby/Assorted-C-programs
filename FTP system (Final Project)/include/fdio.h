@@ -3,7 +3,7 @@
 
 /* Write string to the fd, uses only the write system call              */
 /* Prints error and exits with -1 on error                              */
-void writeToFd(char* string, int fd);
+void writeToFd(int fd, char* string);
 
 /* Read from the supplied fd until a newline or EOF is detected         */
 /* Saves data into dynamically allocated character array and returns    */

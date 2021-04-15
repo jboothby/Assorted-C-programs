@@ -8,18 +8,10 @@
 #include <errno.h>
 
 /* Writes to fd */
-void writeToFd(char* string, int fd){    // Write and read to server
+void writeToFd(int fd, char* string){    // Write and read to server
 
         // Holds amount written
         ssize_t actualWrite;
-
-        // Debug output
-        printf("Writing <");
-        for( int i = 0; i <= strlen(string); i++){
-            printf("(%d)", string[i]);
-        }
-        printf("> to fd: %d\n", fd);
-        
 
         // Write string to server
         actualWrite = write(fd, string, strlen(string));
@@ -27,8 +19,6 @@ void writeToFd(char* string, int fd){    // Write and read to server
             perror("write");
             exit(-1);
         }
-
-
 }
 
 /* Read a newline terminated string from the fd string */
@@ -42,11 +32,7 @@ char* readFromFd(int fd){
     
     // Prompt user for input if fd is stdin
     if( fd == 0){
-        actual = write(1, "Enter a command: ", strlen("Enter a command: "));
-        if( actual < 0 ){
-            perror("write");
-            exit(-1);
-        }
+        writeToFd(1, "\nEnter a command: ");
     }
 
     // Allocate space for first character
@@ -55,11 +41,11 @@ char* readFromFd(int fd){
     while( (actual = read(fd, temp, 1)) > 0){
         // Allocate space for new character and insert into buffer
         // The count +2 ensure room for the null terminator
-        fdString = realloc(fdString, sizeof (char) * (count + 2));
-        fdString[count++] = temp[0];
         if( temp[0] == '\n' ){
             break;
         }
+        fdString = realloc(fdString, sizeof (char) * (count + 2));
+        fdString[count++] = temp[0];
     }
     if( actual < 0 ){
         perror("read");
@@ -67,6 +53,8 @@ char* readFromFd(int fd){
     }
 
     fdString[count] = '\0';    // add null terminator
+
+    writeToFd(1, "\n");
 
     return fdString;
 }    
