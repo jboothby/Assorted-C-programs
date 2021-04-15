@@ -1,4 +1,4 @@
-/* Client side of the FTP System */
+/* Client side of the Ftp syste */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -34,8 +34,9 @@ int processCommands(const char* hostname, int commandfd);   // Process commands
 char** tokenSplit(char* string);                            // Split string into space separated tokens
 int cdLocal(char* path);                                    // cd to path on local machine
 int lsLocal();                                              // execute ls command on local
-int lsRemote(const char* address, int commandfd);           // execute ls on server
+int lsRemote(const char* hostname, int commandfd);          // execute ls on server
 int cdRemote(const char* path, int commandfd);              // execute cd on server
+int get(char* path, const char *hostname, int commandfd);// get file from the server
 int makeDataConnection(const char* hostname, int commandfd);// self explanatory
 
 /* Handles program control */
@@ -79,7 +80,9 @@ int processCommands(const char* hostname, int commandfd){
             // Write command to server, and read response 
             writeToFd(commandfd, "Q\n");
             serverResponse = readFromFd(commandfd);
-            printf("Server response: %s", serverResponse);
+            if( serverResponse[0] == 'E'){
+                printf("Error %s from server\n", serverResponse + 1);
+            }
             
             // Free allocated memory
             free(tokens[0]);
@@ -137,7 +140,9 @@ int processCommands(const char* hostname, int commandfd){
         }else if( strcmp(tokens[0], "get") == 0){
             // TODO: Implement get (stream file through fd)
             // Init data connection
-            printf("Reached get execution block\n");
+            if( get(tokens[1], hostname, commandfd) < 0){
+                writeToFd(2, "get command did not execute properly\n");
+            }
 
         }else if( strcmp(tokens[0], "put") == 0){
             // TODO: Implment put (stream file through fd)
@@ -320,97 +325,168 @@ int lsLocal(){
 
 /* Execute ls -l | more -20 on server side */
 int lsRemote(const char* hostname, int commandfd){
-        char* serverResponse;
-        int datafd;
-        int err;
+    char* serverResponse;
+    int datafd;
+    int err;
 
-        // Make data connection, and continue if successful
-        if( (datafd = makeDataConnection(hostname, commandfd)) > 0){
+    // Make data connection, and continue if successful
+    if( (datafd = makeDataConnection(hostname, commandfd)) > 0){
 
-            // Write ls command to server
-            writeToFd(commandfd, "L\n");
-            serverResponse = readFromFd(commandfd);
-            // Return if error
-            if( serverResponse[0] == 'E'){
-                fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
-                free( serverResponse );
-                close(datafd);
+        // Write ls command to server
+        writeToFd(commandfd, "L\n");
+        serverResponse = readFromFd(commandfd);
+        // Return if error
+        if( serverResponse[0] == 'E'){
+            fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+            free( serverResponse );
+            close(datafd);
+            return -1;
+        }
+        free(serverResponse);
+
+        // Fork off to pipe the datafd information into stdin for more
+        if( fork() ){
+            close(datafd);
+
+            // Wait for child (more -20) to finish
+            wait(&err);
+            if( err < 0){
+                perror("wait");
                 return -1;
             }
-            free(serverResponse);
 
-            // Fork off to pipe the datafd information into stdin for more
-            if( fork() ){
-                close(datafd);
+            return 0;
+        }else{
+            // Redirect data socket to stdin
+            close(0); dup(datafd); close(datafd);
 
-                // Wait for child (more -20) to finish
-                wait(&err);
-                if( err < 0){
-                    perror("wait");
-                    return -1;
-                }
-
-                return 0;
-            }else{
-                // Redirect data socket to stdin
-                close(0); dup(datafd); close(datafd);
-
-                // Send everything in the datafd to more
-                if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
-                    perror("exec");
-                }
+            // Send everything in the datafd to more
+            if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
+                perror("exec");
             }
         }
-        return 0;
+    }
+    return -1; //If we got here, there was an error with datafd
 }
 
 /* Initiate the data connection, return the fd */
 int makeDataConnection(const char* hostname, int commandfd){
-        char* serverResponse;
-        char* substr;
-        int datafd;
-    
-        // Write command to server to open data socket
-        writeToFd(commandfd, "D\n");
-        serverResponse = readFromFd(commandfd);
+    char* serverResponse;
+    char* substr;
+    int datafd;
 
-        // If server sends back error, print it
-        if ( serverResponse[0] == 'E'){
-            fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
-            free( serverResponse );
-            return(-1);
-        }else{
-            // If server sends back port number, connect to it
-            substr = serverResponse + 1;
-            if( debug )
-                printf("Attempting connection on portnum: <%s>\n", substr);
-            // Convert string number to integer, and make connection on that port
-            datafd = attemptConnection(hostname, atoi(substr)); 
-            free(serverResponse);
-        }
-        return datafd;
+    // Write command to server to open data socket
+    writeToFd(commandfd, "D\n");
+    serverResponse = readFromFd(commandfd);
+
+    // If server sends back error, print it
+    if ( serverResponse[0] == 'E'){
+        fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        free( serverResponse );
+        return(-1);
+    }else{
+        // If server sends back port number, connect to it
+        substr = serverResponse + 1;
+        if( debug )
+            printf("Attempting connection on portnum: <%s>\n", substr);
+        // Convert string number to integer, and make connection on that port
+        datafd = attemptConnection(hostname, atoi(substr)); 
+        free(serverResponse);
+    }
+    return datafd;
 }
 
 /* Execute the cd command on server */
 /* Returns 0 on success, -1 on error */
 int cdRemote(const char* path, int commandfd){
-            char *serverResponse;
+    char *serverResponse;
 
-            // Create command string using path
-            char cdWithPath[strlen(path) + 3];    // for C, Path, \n, \0
-            sprintf(cdWithPath, "C%s\n", path);
+    // Create command string using path
+    char cdWithPath[strlen(path) + 3];    // for C, Path, \n, \0
+    sprintf(cdWithPath, "C%s\n", path);
 
-            // Write command to server
-            writeToFd(commandfd, cdWithPath);
+    // Write command to server
+    writeToFd(commandfd, cdWithPath);
 
-            // Grab server response
-            serverResponse = readFromFd(commandfd);
-            if( serverResponse[0] == 'E' ){
-                fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
-                free( serverResponse );
-                return -1;
-            }
+    // Grab server response
+    serverResponse = readFromFd(commandfd);
+    if( serverResponse[0] == 'E' ){
+        fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        free( serverResponse );
+        return -1;
+    }
 
-            free(serverResponse);
-            return 0;
+    free(serverResponse);
+    return 0;
 }
+
+/* Get the filed specified by <path> from the server at address <address> */
+/* Save this file in the cwd. Returns 0 on success, -1 on error */
+int get(char* path, const char *hostname, int commandfd){
+    char* serverResponse;
+    int datafd, filefd;
+    char buf[256];
+    int actualRead, actualWrite;
+    int returnStatus = 0;
+
+    // Filename is everything after last /, or path if no /
+    char *filename;
+    if( strchr(path, '/') != NULL ){
+        filename = (strrchr(path, '/') + 1);
+    }else{
+        filename = path;
+    }
+
+    // Create command string to send to server
+    char getWithPath[strlen(path) + 3];
+    sprintf(getWithPath, "G%s\n", path);
+
+    // Make data connection to server
+    if( (datafd = makeDataConnection(hostname, commandfd)) < 0){
+        close(datafd);
+        return -1;
+    }
+
+    // Write command to server
+    writeToFd(commandfd, getWithPath);
+
+    serverResponse = readFromFd(commandfd);
+    if( serverResponse[0] == 'E'){
+        fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        return -1;
+    }
+    free(serverResponse);
+
+    // Create new file and open it
+    filefd = open(filename, O_CREAT|O_WRONLY, 0700); 
+
+    // Read file from datafd, write to fild
+    while( (actualRead = read(datafd, buf, sizeof(buf)/ sizeof(char))) > 0){
+        actualWrite = write(filefd, buf, actualRead);
+        // on write error, delete file, and return -1
+        if( actualWrite < 0){
+            perror("write");
+            returnStatus = -1;
+            break;
+        }
+    }
+    // On read error, delete file and return
+    if( actualRead < 0 ){
+        perror("read");
+        returnStatus = -1;
+    }
+
+    // If there was an error, delete the file we just created
+    if( returnStatus == -1 ){
+        unlink(filename);
+    }
+
+    // Close the file descriptors
+    close(filefd);
+    close(datafd);
+
+    printf("File transfer successful\n");
+
+    return returnStatus;
+}
+
