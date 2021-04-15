@@ -297,14 +297,14 @@ int lsLocal(){
         if( fork() ){   // Execute more -20 in the parent
             close(wtr);
             close(0); dup(rdr); close(rdr);     // make stdin go to reader
-            if( execlp("more", "-20", (char *) NULL) == -1){
+            if( execlp("more", "more",  "-20", (char *) NULL) == -1){
                 perror("exec");
                 return -1;
             }
         }else{          // Execute ls -l in the child
             close(rdr);
             close(1); dup(wtr); close(wtr); // make stdout go to writer
-            if( execlp("ls", "-l", (char *) NULL) == -1){
+            if( execlp("ls", "ls", "-l", "-a", (char *) NULL) == -1){
                 perror("exec");
                 return -1;
             }
