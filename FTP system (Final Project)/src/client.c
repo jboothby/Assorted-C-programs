@@ -321,8 +321,8 @@ int lsLocal(){
 /* Execute ls -l | more -20 on server side */
 int lsRemote(const char* hostname, int commandfd){
         char* serverResponse;
-        int datafd, actualRead;
-        char buf[256];
+        int datafd;
+        int err;
 
         // Make data connection, and continue if successful
         if( (datafd = makeDataConnection(hostname, commandfd)) > 0){
@@ -339,22 +339,29 @@ int lsRemote(const char* hostname, int commandfd){
             }
             free(serverResponse);
 
-            // Read from connection and write to stdout
-            while( (actualRead = read(datafd, buf, sizeof(buf) / sizeof(char))) > 0){
-                if( write(1, buf, actualRead) < 0 ){
-                    perror("write");
+            // Fork off to pipe the datafd information into stdin for more
+            if( fork() ){
+                close(datafd);
+
+                // Wait for child (more -20) to finish
+                wait(&err);
+                if( err < 0){
+                    perror("wait");
+                    return -1;
+                }
+
+                return 0;
+            }else{
+                // Redirect data socket to stdin
+                close(0); dup(datafd); close(datafd);
+
+                // Send everything in the datafd to more
+                if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
+                    perror("exec");
                 }
             }
-            if( actualRead < 0 ){
-                perror("read");
-            }
-
-            close(datafd);
-            return 0;
         }
-
-        close(datafd);
-        return -1;
+        return 0;
 }
 
 /* Initiate the data connection, return the fd */
