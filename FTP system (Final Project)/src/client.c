@@ -22,23 +22,19 @@
 
 static int debug = 0;   // Debug flag for verbose output
 
-/* ------------------- Define terminal output colors ----------- */
-#define KGRN "\x1b[32m"
-#define KRED "\x1b[31m"
-#define KWHT "\x1b[37m"
-
 /* --------------------- Function Prototypes -------------------- */
 char* parseArgs(int c, char** v);                           // Parse command line arguments
-int attemptConnection( const char *address, int pnum);      // Handle spinning up client connection
+int attemptConnection( const char *address, int pnum);      // Handle spinning up a socket connection
+int makeDataConnection(const char* hostname, int commandfd);// data socket wrapper for attemptConnection
 int processCommands(const char* hostname, int commandfd);   // Process commands
 char** tokenSplit(char* string);                            // Split string into space separated tokens
+int morePipe(int datafd);                                   // Pipe the results from the fd into more
 int cdLocal(char* path);                                    // cd to path on local machine
 int lsLocal();                                              // execute ls command on local
 int lsRemote(const char* hostname, int commandfd);          // execute ls on server
 int cdRemote(const char* path, int commandfd);              // execute cd on server
-int get(char* path, const char *hostname, int commandfd, int save);   // get file from the server
-int makeDataConnection(const char* hostname, int commandfd);// self explanatory
-int morePipe(int datafd);                                   // Pipe the results from the fd into more
+int get(char* path, const char *hostname, int commandfd, int save);// get file from the server
+int put(char* path, const char *hostname, int commandfd);   // transfer file from client to server
 
 /* Handles program control */
 int main(int argc, char* argv[]){
@@ -62,6 +58,7 @@ int processCommands(const char* hostname, int commandfd){
     int err;
     
 
+    // Inifite loop, breaks on exit command
     for(;;){
 
         // Read command from stdin, then split into tokens
@@ -82,7 +79,7 @@ int processCommands(const char* hostname, int commandfd){
             writeToFd(commandfd, "Q\n");
             serverResponse = readFromFd(commandfd);
             if( serverResponse[0] == 'E'){
-                printf("Error %s from server\n", serverResponse + 1);
+                writeToFd(2, "Exit command did not execute properly\n");
             }
             
             // Free allocated memory
@@ -141,22 +138,27 @@ int processCommands(const char* hostname, int commandfd){
         /* GET COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "get") == 0){
 
+            // Call get with save flag set to 1
             if( get(tokens[1], hostname, commandfd, 1) < 0){
                 writeToFd(2, "get command did not execute properly\n");
             }
 
-        /* PUT EXECUTION BLOCK */
-        }else if( strcmp(tokens[0], "put") == 0){
-            // TODO: Implment put (stream file through fd)
-            // Init data connection
-            printf("Reached put execution block\n");
-
         /* SHOW COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "show") == 0){
 
+            // Call get with the save flag set to 0
             if( get(tokens[1], hostname, commandfd, 0) < 0){
-                writeToFd(2, "Show command did not execute properly\n");
+                writeToFd(2, "show command did not execute properly\n");
             }
+
+        /* PUT EXECUTION BLOCK */
+        }else if( strcmp(tokens[0], "put") == 0){
+
+            // Call put with the path, hostname, and commandfd
+            if( put(tokens[1], hostname, commandfd) < 0){
+                writeToFd(2, "show command did not execute properly\n");
+            }
+
 
         }else{
             printf("Command %s not recognized\n", tokens[0]);
@@ -342,7 +344,7 @@ int lsRemote(const char* hostname, int commandfd){
         serverResponse = readFromFd(commandfd);
         // Return if error
         if( serverResponse[0] == 'E'){
-            fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+            fprintf(stderr, "%s\n", serverResponse + 1);
             free( serverResponse );
             close(datafd);
             return -1;
@@ -372,7 +374,7 @@ int makeDataConnection(const char* hostname, int commandfd){
 
     // If server sends back error, print it
     if ( serverResponse[0] == 'E'){
-        fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        fprintf(stderr, "%s\n", serverResponse + 1);
         free( serverResponse );
         return(-1);
     }else{
@@ -402,7 +404,7 @@ int cdRemote(const char* path, int commandfd){
     // Grab server response
     serverResponse = readFromFd(commandfd);
     if( serverResponse[0] == 'E' ){
-        fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        fprintf(stderr, "%s\n", serverResponse + 1);
         free( serverResponse );
         return -1;
     }
@@ -444,7 +446,7 @@ int get(char* path, const char *hostname, int commandfd, int save){
     // Get server response, print error if exists
     serverResponse = readFromFd(commandfd);
     if( serverResponse[0] == 'E'){
-        fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        fprintf(stderr, "%s\n", serverResponse + 1);
         free(serverResponse);
         return -1;
     }
@@ -498,6 +500,76 @@ int get(char* path, const char *hostname, int commandfd, int save){
     return returnStatus;
 }
 
+/* Transfer the file specified by path to the server at location hostname */
+int put(char* path, const char *hostname, int commandfd){
+    char *serverResponse;
+    char buf[256];
+    int filefd, datafd;
+    int actualRead, actualWrite;
+
+    // Filename is everything after last /, or path if no /
+    char *filename;
+    if( strchr(path, '/') != NULL ){
+        filename = (strrchr(path, '/') + 1);
+    }else{
+        filename = path;
+    }
+
+    // Create command string to send to server
+    char putWithPath[strlen(path) + 3];
+    sprintf(putWithPath, "P%s\n", filename);
+
+    // Make data connection to server
+    if( (datafd = makeDataConnection(hostname, commandfd)) < 0){
+        close(datafd);
+        return -1;
+    }
+
+    // Write contents of local file at path into datafd
+    filefd = open(path, O_RDONLY);
+    if( filefd < 0){
+        perror("Write");
+        close(datafd);
+        return -1;
+    }
+
+    // Read data frome file, write to datafd
+    while((actualRead = read(filefd, buf, sizeof(buf)/sizeof(char))) > 0){
+        actualWrite = write(datafd, buf, actualRead);
+        if( actualWrite < 0){
+            perror("Write");
+            close(filefd);
+            close(datafd);
+            return -1;
+        }
+    }
+    if(actualRead < 0){
+        perror("Read");
+        close(filefd);
+        close(datafd);
+        return -1;
+    }
+
+    // Write command to server
+    writeToFd(commandfd, putWithPath);
+    serverResponse = readFromFd(commandfd);
+    if (serverResponse[0] == 'E'){
+        fprintf(stderr, "%s\n", serverResponse + 1);
+        free(serverResponse);
+        close(filefd);
+        close(datafd);
+        return -1;
+    }
+
+    // If no errors, return 0 for success
+    free(serverResponse);
+    close(filefd);
+    close(datafd);
+
+    return 0;
+
+}
+
 /* Pipe the results from the data fd into the more command */
 int morePipe(int datafd){
 
@@ -527,3 +599,5 @@ int morePipe(int datafd){
         
         return 0;
 }
+
+
