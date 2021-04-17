@@ -36,8 +36,9 @@ int cdLocal(char* path);                                    // cd to path on loc
 int lsLocal();                                              // execute ls command on local
 int lsRemote(const char* hostname, int commandfd);          // execute ls on server
 int cdRemote(const char* path, int commandfd);              // execute cd on server
-int get(char* path, const char *hostname, int commandfd);// get file from the server
+int get(char* path, const char *hostname, int commandfd, int save);   // get file from the server
 int makeDataConnection(const char* hostname, int commandfd);// self explanatory
+int morePipe(int datafd);                                   // Pipe the results from the fd into more
 
 /* Handles program control */
 int main(int argc, char* argv[]){
@@ -137,20 +138,25 @@ int processCommands(const char* hostname, int commandfd){
                 writeToFd(2, "rls command did not execute properly\n");
             }
 
+        /* GET COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "get") == 0){
-            // TODO: Implement get (stream file through fd)
-            // Init data connection
-            if( get(tokens[1], hostname, commandfd) < 0){
+
+            if( get(tokens[1], hostname, commandfd, 1) < 0){
                 writeToFd(2, "get command did not execute properly\n");
             }
 
+        /* PUT EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "put") == 0){
             // TODO: Implment put (stream file through fd)
             // Init data connection
             printf("Reached put execution block\n");
 
+        /* SHOW COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "show") == 0){
-            printf("Reached show execution block\n");
+
+            if( get(tokens[1], hostname, commandfd, 0) < 0){
+                writeToFd(2, "Show command did not execute properly\n");
+            }
 
         }else{
             printf("Command %s not recognized\n", tokens[0]);
@@ -327,7 +333,6 @@ int lsLocal(){
 int lsRemote(const char* hostname, int commandfd){
     char* serverResponse;
     int datafd;
-    int err;
 
     // Make data connection, and continue if successful
     if( (datafd = makeDataConnection(hostname, commandfd)) > 0){
@@ -344,27 +349,13 @@ int lsRemote(const char* hostname, int commandfd){
         }
         free(serverResponse);
 
-        // Fork off to pipe the datafd information into stdin for more
-        if( fork() ){
-            close(datafd);
-
-            // Wait for child (more -20) to finish
-            wait(&err);
-            if( err < 0){
-                perror("wait");
-                return -1;
-            }
-
-            return 0;
+        // Send file descriptor to more pipe
+        if( morePipe(datafd) < 0){
+            return -1;
         }else{
-            // Redirect data socket to stdin
-            close(0); dup(datafd); close(datafd);
-
-            // Send everything in the datafd to more
-            if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
-                perror("exec");
-            }
+            return 0;
         }
+
     }
     return -1; //If we got here, there was an error with datafd
 }
@@ -422,9 +413,9 @@ int cdRemote(const char* path, int commandfd){
 
 /* Get the filed specified by <path> from the server at address <address> */
 /* Save this file in the cwd. Returns 0 on success, -1 on error */
-int get(char* path, const char *hostname, int commandfd){
+int get(char* path, const char *hostname, int commandfd, int save){
     char* serverResponse;
-    int datafd, filefd;
+    int datafd, outputfd;
     char buf[256];
     int actualRead, actualWrite;
     int returnStatus = 0;
@@ -450,19 +441,36 @@ int get(char* path, const char *hostname, int commandfd){
     // Write command to server
     writeToFd(commandfd, getWithPath);
 
+    // Get server response, print error if exists
     serverResponse = readFromFd(commandfd);
     if( serverResponse[0] == 'E'){
         fprintf(stderr, "Error: %s from server\n", serverResponse + 1);
+        free(serverResponse);
         return -1;
     }
     free(serverResponse);
 
-    // Create new file and open it
-    filefd = open(filename, O_CREAT|O_WRONLY, 0700); 
+    // If the save flag is not set, pass this off to more pipe
+    if(!save){
+        if( morePipe(datafd) < 0 ){
+            return -1;
+        }else{
+            return 0;
+        }
+    }
+        
 
-    // Read file from datafd, write to fild
+    // Create new file and open it
+    outputfd = open(filename, O_CREAT|O_WRONLY, 0700); 
+    if( outputfd < 0 ){
+        perror("open");
+        close(datafd);
+        return -1;
+    }
+
+    // Read file from datafd, write to new file
     while( (actualRead = read(datafd, buf, sizeof(buf)/ sizeof(char))) > 0){
-        actualWrite = write(filefd, buf, actualRead);
+        actualWrite = write(outputfd, buf, actualRead);
         // on write error, delete file, and return -1
         if( actualWrite < 0){
             perror("write");
@@ -482,7 +490,7 @@ int get(char* path, const char *hostname, int commandfd){
     }
 
     // Close the file descriptors
-    close(filefd);
+    close(outputfd);
     close(datafd);
 
     printf("File transfer successful\n");
@@ -490,3 +498,32 @@ int get(char* path, const char *hostname, int commandfd){
     return returnStatus;
 }
 
+/* Pipe the results from the data fd into the more command */
+int morePipe(int datafd){
+
+        int err;
+
+        // Fork off to pipe the datafd information into stdin for more
+        if( fork() ){
+            close(datafd);
+
+            // Wait for child (more -20) to finish
+            wait(&err);
+            if( err < 0){
+                perror("wait");
+                return -1;
+            }
+
+            return 0;
+        }else{
+            // Redirect data socket to stdin
+            close(0); dup(datafd); close(datafd);
+
+            // Send everything in the datafd to more
+            if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
+                perror("exec");
+            }
+        }
+        
+        return 0;
+}
