@@ -11,4 +11,8 @@ void writeToFd(int fd, char* string);
 /* Prints error and exits -1 on error, else returns character array     */
 char* readFromFd(int fd);
 
+/* Split the supplied string around whitespace into an array of  two tokens */
+/* Returns a string array where first string is the command, and second is parameter */
+char** tokenSplit(char* string);
+
 #endif

@@ -13,7 +13,7 @@ client:
 	$(CC) $(CCFLAGS) -o $(CLIENT) $(SRC_DIR)/client.c $(OBJS)
 
 server:
-	$(CC) $(CCFLAGS) -o $(SERVER) $(SRC_DIR)/server.c 
+	$(CC) $(CCFLAGS) -o $(SERVER) $(SRC_DIR)/server.c $(OBJS)
 
 fdio.o:
 	$(CC) $(CCFLAGS) -c $(SRC_DIR)/fdio.c
