@@ -5,33 +5,47 @@
 /* ----------- Defines and Globals --------------*/
 static int debug = 0;       // Debug flag for verbose output
 
+
+/* ------------ Structures --------------------- */
+typedef struct conData{       // Holds data about a connection
+    int listenfd;
+    int portnum;
+}conData;
+    
+
+
 /* ------------ Function Prototypes ------------- */
 
-int serverConnection( int pnum );           // Handle starting server connection on port <pnum>
-int parseArgs(int argnum, char** arguments);// Parse arguments, return port number if -p flag or -1 for default
-int processCommands(int controlfd);         // Loop and handle the commands from the client
+struct conData connection(int pnum, int queueLength);   // Start a connection on pnum, or random if pnum = 0
+int serverConnection( struct conData cData );           // Handle starting server connection on port <pnum>
+int dataConnection(struct conData cData);               // Start a data connection
+int parseArgs(int argnum, char** arguments);            // Parse arguments, return port number if -p flag or -1 for default
+int processCommands(int controlfd);                     // Loop and handle the commands from the client
 
 /* Handles program control */
 int main(int argc, char * argv[]){
 
     // Make the server connetion on -p parameter value, or default
+    // Using the listenfd from the connection
     int argVal = parseArgs(argc, argv);
     if( argVal ){
-        serverConnection(argVal);
+        serverConnection(connection(argVal, 4));
     }else{
-        serverConnection(PORTNUM);
+        serverConnection(connection(PORTNUM, 4));
     }
 
     return 0;
 }
 
-// Spin up a server on pnum and wait for a connection
-// Forks off new process for each connection
-int serverConnection(int pnum){
+/* Start a connection on the given port with a queue of given length */
+/* Returns an integer array, where [0] is the listenfd, and [1] is the portnum */
+struct conData connection(int pnum, int queueLength){
+
     int err;
+    conData cdata;
 
     if( debug ){
-        printf("Setting up server on port <%d>\n", pnum);
+        printf("Setting up connection on port <%d>\n", pnum);
     }
 
     // Declare socket and set options
@@ -63,21 +77,34 @@ int serverConnection(int pnum){
         exit(1);
     }
 
+    // Assign return values
+    cdata.listenfd = listenfd;
+    cdata.portnum = ntohs(servAddr.sin_port);
+
     if( debug ){
-        printf("Bound socket to port %d\n", pnum);
+        printf("Bound socket to port %d\n", cdata.portnum);
     }
 
     // Make the listen call to spin up server
     // Set the queue to size 4
-    err = listen( listenfd, 4);
+    err = listen( listenfd, queueLength);
     if( err < 0 ){
         perror("listen");
         exit(-errno);
     }
 
     if( debug ){
-        printf("Listening on socket with queue size 4\n");
+        printf("Listening on socket with queue size <%d>\n", queueLength);
     }
+
+    return cdata;
+}
+
+// Spin up a server on pnum and wait for a connection
+// Forks off new process for each connection
+int serverConnection(struct conData cData){
+
+    int err;
 
     // Go into accept (block and wait for connection) and fork loop
     int connectfd;
@@ -92,7 +119,7 @@ int serverConnection(int pnum){
             perror("wait");
         }
 
-        connectfd = accept(listenfd, (struct sockaddr*) &clientAddr, &length);      // wait on connection
+        connectfd = accept(cData.listenfd, (struct sockaddr*) &clientAddr, &length);      // wait on connection
         if( connectfd < 0 ){
             perror("accept");
             exit(-errno);
@@ -117,7 +144,7 @@ int serverConnection(int pnum){
             // Close parent copy of file descriptor
             close(connectfd);
 
-            printf("Parent: Connected to client (%s) on port number (%d)\n", hostName, pnum);
+            printf("Parent: Connected to client (%s) using port <%d>\n", hostName, cData.portnum);
 
             // send output to stdout
             if(debug){
@@ -138,7 +165,7 @@ int serverConnection(int pnum){
 
 /* Read and process commands from the client until the client exits */
 int processCommands(int controlfd){
-    printf("Child <%d>: Reached Process commands with controlfd %d\n", getpid(), controlfd);
+    printf("Child <%d>: Processing commands from controlfd <%d>\n", getpid(), controlfd);
     char* command;
     char* parameter;
     for(;;){
