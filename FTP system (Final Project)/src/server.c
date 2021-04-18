@@ -9,7 +9,7 @@ static int debug = 0;       // Debug flag for verbose output
 
 int serverConnection( int pnum );           // Handle starting server connection on port <pnum>
 int parseArgs(int argnum, char** arguments);// Parse arguments, return port number if -p flag or -1 for default
-int processCommands(int controlfd);         // 
+int processCommands(int controlfd);         // Loop and handle the commands from the client
 
 /* Handles program control */
 int main(int argc, char * argv[]){
@@ -46,6 +46,10 @@ int serverConnection(int pnum){
         exit(-errno);
     }
 
+    if( debug ){
+        printf("Created socket with file descriptor <%d>\n", listenfd);
+    }
+
     // Declare sockaddress structure and set parameters
     struct sockaddr_in servAddr;
     memset(&servAddr, 0, sizeof(servAddr));             // initialize mem block to 0
@@ -59,6 +63,10 @@ int serverConnection(int pnum){
         exit(1);
     }
 
+    if( debug ){
+        printf("Bound socket to port %d\n", pnum);
+    }
+
     // Make the listen call to spin up server
     // Set the queue to size 4
     err = listen( listenfd, 4);
@@ -67,12 +75,23 @@ int serverConnection(int pnum){
         exit(-errno);
     }
 
+    if( debug ){
+        printf("Listening on socket with queue size 4\n");
+    }
+
     // Go into accept (block and wait for connection) and fork loop
     int connectfd;
     socklen_t length = sizeof(struct sockaddr_in);          // save to use in accept funtion call for brevity
     struct sockaddr_in clientAddr;                          // contains client address structure
 
     for(;;){
+
+        // Attempt to clean up child processes
+        while(waitpid(0, &err, WNOHANG)>0);
+        if(err < 0){
+            perror("wait");
+        }
+
         connectfd = accept(listenfd, (struct sockaddr*) &clientAddr, &length);      // wait on connection
         if( connectfd < 0 ){
             perror("accept");
@@ -98,22 +117,17 @@ int serverConnection(int pnum){
             // Close parent copy of file descriptor
             close(connectfd);
 
-            printf("Connected to client (%s) on port number (%d)\n", hostName, pnum);
+            printf("Parent: Connected to client (%s) on port number (%d)\n", hostName, pnum);
 
             // send output to stdout
             if(debug){
-                printf("Forked process <%d>\n",procId);
+                printf("Parent: Forked process <%d>\n",procId);
                 fflush(stdout);
             } 
 
-            wait(&err);                 // wait for all children to exit
 
-            if(debug){
-                printf("Ended process <%d>. Waiting for next connection...\n", procId);
-                fflush(stdout);
-            }
         }else{                                          // child block
-            printf("Child block executing current command\n");
+            printf("Child <%d>: Child block executing current command\n", getpid());
             fflush(stdout);
             processCommands(connectfd); // Hand execution over to command handler
             exit(0);                    // exit the child
@@ -124,34 +138,34 @@ int serverConnection(int pnum){
 
 /* Read and process commands from the client until the client exits */
 int processCommands(int controlfd){
-    printf("Reached Process commands with controlfd %d\n", controlfd);
+    printf("Child <%d>: Reached Process commands with controlfd %d\n", getpid(), controlfd);
     char* command;
     char* parameter;
     for(;;){
         command = readFromFd(controlfd);
         switch(command[0]){
             case 'D':
-                printf("D from client\n");
+                printf("Child <%d>: D from client\n", getpid());
                 writeToFd(controlfd, "A\n");
                 break;
             case 'C':
-                printf("C from client\n");
+                printf("Child <%d>: C from client\n", getpid());
                 writeToFd(controlfd, "A\n");
                 break;
             case 'L':
-                printf("L from client\n");
+                printf("Child <%d>: L from client\n", getpid());
                 writeToFd(controlfd, "A\n");
                 break;
             case 'G':
-                printf("G from client\n");
+                printf("Child <%d>: G from client\n", getpid());
                 writeToFd(controlfd, "A\n");
                 break;
             case 'P':
-                printf("P from client\n");
+                printf("Child <%d>: P from client\n", getpid());
                 writeToFd(controlfd, "A\n");
                 break;
             case 'Q':
-                printf("Q from client\n");
+                printf("Child <%d>: Q from client\n", getpid());
                 writeToFd(controlfd, "A\n");
                 return 0;
             default:
