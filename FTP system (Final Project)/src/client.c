@@ -1,21 +1,4 @@
-/* Client side of the Ftp syste */
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <assert.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fdio.h>
-#include <dirent.h>
-#include <ctype.h>
+#include <mftp.h>
 
 /* ------------------- Defines and Globals ---------------------- */
 #define PORTNUM 37896   // Port number for connection to server
@@ -25,31 +8,31 @@ static int debug = 0;   // Debug flag for verbose output
 /* --------------------- Function Prototypes -------------------- */
 char* parseArgs(int c, char** v);                           // Parse command line arguments
 int attemptConnection( const char *address, int pnum);      // Handle spinning up a socket connection
-int makeDataConnection(const char* hostname, int commandfd);// data socket wrapper for attemptConnection
-int processCommands(const char* hostname, int commandfd);   // Process commands
+int makeDataConnection(const char* hostname, int controlfd);// data socket wrapper for attemptConnection
+int processCommands(const char* hostname, int controlfd);   // Process commands
 int morePipe(int datafd);                                   // Pipe the results from the fd into more
 int cdLocal(char* path);                                    // cd to path on local machine
 int lsLocal();                                              // execute ls command on local
-int lsRemote(const char* hostname, int commandfd);          // execute ls on server
-int cdRemote(const char* path, int commandfd);              // execute cd on server
-int get(char* path, const char *hostname, int commandfd, int save);// get file from the server
-int put(char* path, const char *hostname, int commandfd);   // transfer file from client to server
+int lsRemote(const char* hostname, int controlfd);          // execute ls on server
+int cdRemote(const char* path, int controlfd);              // execute cd on server
+int get(char* path, const char *hostname, int controlfd, int save);// get file from the server
+int put(char* path, const char *hostname, int controlfd);   // transfer file from client to server
 
 /* Handles program control */
 int main(int argc, char* argv[]){
 
     const char* hostname;
-    int commandfd;
+    int controlfd;
 
     hostname = parseArgs(argc, argv);
-    commandfd = attemptConnection(hostname, PORTNUM);
-    processCommands(hostname, commandfd);
+    controlfd = attemptConnection(hostname, PORTNUM);
+    processCommands(hostname, controlfd);
 
     return 0;
 }
 
 /* Get commands from user and process them appropriately */
-int processCommands(const char* hostname, int commandfd){
+int processCommands(const char* hostname, int controlfd){
 
     char *command;                          // Holds return from readFromFd for stdin
     char **tokens = NULL;                   // Result of splitting command into tokens
@@ -75,8 +58,8 @@ int processCommands(const char* hostname, int commandfd){
         if( strcmp(tokens[0], "exit") == 0 ){
 
             // Write command to server, and read response 
-            writeToFd(commandfd, "Q\n");
-            serverResponse = readFromFd(commandfd);
+            writeToFd(controlfd, "Q\n");
+            serverResponse = readFromFd(controlfd);
             if( serverResponse[0] == 'E'){
                 writeToFd(2, "Exit command did not execute properly\n");
             }
@@ -88,7 +71,7 @@ int processCommands(const char* hostname, int commandfd){
             free(serverResponse);
 
             // Close socket
-            close(commandfd);
+            close(controlfd);
 
             printf("Exiting...\n");
 
@@ -116,7 +99,7 @@ int processCommands(const char* hostname, int commandfd){
         /* RCD COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rcd") == 0){
 
-            if( cdRemote(tokens[1], commandfd) < 0  && debug){
+            if( cdRemote(tokens[1], controlfd) < 0  && debug){
                 writeToFd(2, "rcd command did not execute properly\n");
             }
 
@@ -130,7 +113,7 @@ int processCommands(const char* hostname, int commandfd){
         /* RLS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rls") == 0){
 
-            if( lsRemote(hostname, commandfd) < 0){
+            if( lsRemote(hostname, controlfd) < 0){
                 writeToFd(2, "rls command did not execute properly\n");
             }
 
@@ -138,7 +121,7 @@ int processCommands(const char* hostname, int commandfd){
         }else if( strcmp(tokens[0], "get") == 0){
 
             // Call get with save flag set to 1
-            if( get(tokens[1], hostname, commandfd, 1) < 0){
+            if( get(tokens[1], hostname, controlfd, 1) < 0){
                 writeToFd(2, "get command did not execute properly\n");
             }
 
@@ -146,15 +129,15 @@ int processCommands(const char* hostname, int commandfd){
         }else if( strcmp(tokens[0], "show") == 0){
 
             // Call get with the save flag set to 0
-            if( get(tokens[1], hostname, commandfd, 0) < 0){
+            if( get(tokens[1], hostname, controlfd, 0) < 0){
                 writeToFd(2, "show command did not execute properly\n");
             }
 
         /* PUT EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "put") == 0){
 
-            // Call put with the path, hostname, and commandfd
-            if( put(tokens[1], hostname, commandfd) < 0){
+            // Call put with the path, hostname, and controlfd
+            if( put(tokens[1], hostname, controlfd) < 0){
                 writeToFd(2, "show command did not execute properly\n");
             }
 
@@ -286,16 +269,16 @@ int lsLocal(){
 }
 
 /* Execute ls -l | more -20 on server side */
-int lsRemote(const char* hostname, int commandfd){
+int lsRemote(const char* hostname, int controlfd){
     char* serverResponse;
     int datafd;
 
     // Make data connection, and continue if successful
-    if( (datafd = makeDataConnection(hostname, commandfd)) > 0){
+    if( (datafd = makeDataConnection(hostname, controlfd)) > 0){
 
         // Write ls command to server
-        writeToFd(commandfd, "L\n");
-        serverResponse = readFromFd(commandfd);
+        writeToFd(controlfd, "L\n");
+        serverResponse = readFromFd(controlfd);
         // Return if error
         if( serverResponse[0] == 'E'){
             fprintf(stderr, "%s\n", serverResponse + 1);
@@ -317,14 +300,14 @@ int lsRemote(const char* hostname, int commandfd){
 }
 
 /* Initiate the data connection, return the fd */
-int makeDataConnection(const char* hostname, int commandfd){
+int makeDataConnection(const char* hostname, int controlfd){
     char* serverResponse;
     char* substr;
     int datafd;
 
     // Write command to server to open data socket
-    writeToFd(commandfd, "D\n");
-    serverResponse = readFromFd(commandfd);
+    writeToFd(controlfd, "D\n");
+    serverResponse = readFromFd(controlfd);
 
     // If server sends back error, print it
     if ( serverResponse[0] == 'E'){
@@ -345,7 +328,7 @@ int makeDataConnection(const char* hostname, int commandfd){
 
 /* Execute the cd command on server */
 /* Returns 0 on success, -1 on error */
-int cdRemote(const char* path, int commandfd){
+int cdRemote(const char* path, int controlfd){
     char *serverResponse;
 
     // Create command string using path
@@ -353,10 +336,10 @@ int cdRemote(const char* path, int commandfd){
     sprintf(cdWithPath, "C%s\n", path);
 
     // Write command to server
-    writeToFd(commandfd, cdWithPath);
+    writeToFd(controlfd, cdWithPath);
 
     // Grab server response
-    serverResponse = readFromFd(commandfd);
+    serverResponse = readFromFd(controlfd);
     if( serverResponse[0] == 'E' ){
         fprintf(stderr, "%s\n", serverResponse + 1);
         free( serverResponse );
@@ -369,7 +352,7 @@ int cdRemote(const char* path, int commandfd){
 
 /* Get the filed specified by <path> from the server at address <address> */
 /* Save this file in the cwd. Returns 0 on success, -1 on error */
-int get(char* path, const char *hostname, int commandfd, int save){
+int get(char* path, const char *hostname, int controlfd, int save){
     char* serverResponse;
     int datafd, outputfd;
     char buf[256];
@@ -389,16 +372,16 @@ int get(char* path, const char *hostname, int commandfd, int save){
     sprintf(getWithPath, "G%s\n", path);
 
     // Make data connection to server
-    if( (datafd = makeDataConnection(hostname, commandfd)) < 0){
+    if( (datafd = makeDataConnection(hostname, controlfd)) < 0){
         close(datafd);
         return -1;
     }
 
     // Write command to server
-    writeToFd(commandfd, getWithPath);
+    writeToFd(controlfd, getWithPath);
 
     // Get server response, print error if exists
-    serverResponse = readFromFd(commandfd);
+    serverResponse = readFromFd(controlfd);
     if( serverResponse[0] == 'E'){
         fprintf(stderr, "%s\n", serverResponse + 1);
         free(serverResponse);
@@ -455,7 +438,7 @@ int get(char* path, const char *hostname, int commandfd, int save){
 }
 
 /* Transfer the file specified by path to the server at location hostname */
-int put(char* path, const char *hostname, int commandfd){
+int put(char* path, const char *hostname, int controlfd){
     char *serverResponse;
     char buf[256];
     int filefd, datafd;
@@ -474,7 +457,7 @@ int put(char* path, const char *hostname, int commandfd){
     sprintf(putWithPath, "P%s\n", filename);
 
     // Make data connection to server
-    if( (datafd = makeDataConnection(hostname, commandfd)) < 0){
+    if( (datafd = makeDataConnection(hostname, controlfd)) < 0){
         close(datafd);
         return -1;
     }
@@ -505,8 +488,8 @@ int put(char* path, const char *hostname, int commandfd){
     }
 
     // Write command to server
-    writeToFd(commandfd, putWithPath);
-    serverResponse = readFromFd(commandfd);
+    writeToFd(controlfd, putWithPath);
+    serverResponse = readFromFd(controlfd);
     if (serverResponse[0] == 'E'){
         fprintf(stderr, "%s\n", serverResponse + 1);
         free(serverResponse);

@@ -1,28 +1,15 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <assert.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fdio.h>
-#include <dirent.h>
-#include <ctype.h>
+/* Server side of the FTP system */
 
-/* ----------- Defines and Globals ------------- */
-#define PORTNUM 37896       // Port number for connection to server
+#include <mftp.h>
 
+/* ----------- Defines and Globals --------------*/
 static int debug = 0;       // Debug flag for verbose output
+
 /* ------------ Function Prototypes ------------- */
 
 int serverConnection( int pnum );           // Handle starting server connection on port <pnum>
 int parseArgs(int argnum, char** arguments);// Parse arguments, return port number if -p flag or -1 for default
+int processCommands(int controlfd);         // 
 
 /* Handles program control */
 int main(int argc, char * argv[]){
@@ -108,18 +95,70 @@ int serverConnection(int pnum){
         // Fork off a child to handle the connection on a separate process
         int procId = fork();
         if( procId ){                                   // parent block
+            // Close parent copy of file descriptor
+            close(connectfd);
+
+            printf("Connected to client (%s) on port number (%d)\n", hostName, pnum);
+
             // send output to stdout
             if(debug){
-                printf("Connected to host (%s)\n", hostName);
+                printf("Forked process <%d>\n",procId);
                 fflush(stdout);
             } 
-            close(connectfd);
+
+            wait(&err);                 // wait for all children to exit
+
+            if(debug){
+                printf("Ended process <%d>. Waiting for next connection...\n", procId);
+                fflush(stdout);
+            }
         }else{                                          // child block
             printf("Child block executing current command\n");
             fflush(stdout);
+            processCommands(connectfd); // Hand execution over to command handler
             exit(0);                    // exit the child
         }
-        while(wait(NULL) > 0){};        // wait for all children to exit
+    }
+    return 0;
+}
+
+/* Read and process commands from the client until the client exits */
+int processCommands(int controlfd){
+    printf("Reached Process commands with controlfd %d\n", controlfd);
+    char* command;
+    char* parameter;
+    for(;;){
+        command = readFromFd(controlfd);
+        switch(command[0]){
+            case 'D':
+                printf("D from client\n");
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'C':
+                printf("C from client\n");
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'L':
+                printf("L from client\n");
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'G':
+                printf("G from client\n");
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'P':
+                printf("P from client\n");
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'Q':
+                printf("Q from client\n");
+                writeToFd(controlfd, "A\n");
+                return 0;
+            default:
+                printf("Error. Invalid command from client\n");
+        }
+
+        free(command);
     }
     return 0;
 }
@@ -174,3 +213,4 @@ int parseArgs(int argnum, char** arguments){
     // Default value
     return 0;
 }
+
