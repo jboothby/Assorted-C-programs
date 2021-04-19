@@ -7,20 +7,21 @@ static int debug = 0;       // Debug flag for verbose output
 
 
 /* ------------ Structures --------------------- */
-typedef struct conData{       // Holds data about a connection
+typedef struct connectData{       // Holds data about a connection
     int listenfd;
     int portnum;
-}conData;
+}connectData;
     
 
 
 /* ------------ Function Prototypes ------------- */
 
-struct conData connection(int pnum, int queueLength);   // Start a connection on pnum, or random if pnum = 0
-int serverConnection( struct conData cData );           // Handle starting server connection on port <pnum>
-int dataConnection(struct conData cData);               // Start a data connection
-int parseArgs(int argnum, char** arguments);            // Parse arguments, return port number if -p flag or -1 for default
-int processCommands(int controlfd);                     // Loop and handle the commands from the client
+struct connectData connection(int pnum, int queueLength);   // Start a connection on pnum, or random if pnum = 0
+int serverConnection( struct connectData cdata );           // Handle starting server connection on port <pnum>
+int dataConnection(struct connectData cdata);               // Start a data connection
+int parseArgs(int argnum, char** arguments);                // Parse arguments, return port number if -p flag or -1 for default
+int processCommands(int controlfd);                         // Loop and handle the commands from the client
+int cd(int controlfd, char *path);                          // Change directory to path
 
 /* Handles program control */
 int main(int argc, char * argv[]){
@@ -39,10 +40,10 @@ int main(int argc, char * argv[]){
 
 /* Start a connection on the given port with a queue of given length */
 /* Returns an integer array, where [0] is the listenfd, and [1] is the portnum */
-struct conData connection(int pnum, int queueLength){
+struct connectData connection(int pnum, int queueLength){
 
     int err;
-    conData cdata;
+    connectData cdata;
 
     if( debug ){
         printf("Setting up connection on port <%d>\n", pnum);
@@ -54,6 +55,7 @@ struct conData connection(int pnum, int queueLength){
         perror("socket");
         exit(-errno);
     }
+    // ensure socket can be reused (avoid error)
     err = setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)); 
     if( err < 0 ){
         perror("setsocketopt");
@@ -102,7 +104,7 @@ struct conData connection(int pnum, int queueLength){
 
 // Spin up a server on pnum and wait for a connection
 // Forks off new process for each connection
-int serverConnection(struct conData cData){
+int serverConnection(struct connectData cdata){
 
     int err;
 
@@ -119,7 +121,8 @@ int serverConnection(struct conData cData){
             perror("wait");
         }
 
-        connectfd = accept(cData.listenfd, (struct sockaddr*) &clientAddr, &length);      // wait on connection
+        // Wait on the connection at the listenfd
+        connectfd = accept(cdata.listenfd, (struct sockaddr*) &clientAddr, &length);      // wait on connection
         if( connectfd < 0 ){
             perror("accept");
             exit(-errno);
@@ -144,7 +147,7 @@ int serverConnection(struct conData cData){
             // Close parent copy of file descriptor
             close(connectfd);
 
-            printf("Parent: Connected to client (%s) using port <%d>\n", hostName, cData.portnum);
+            printf("Parent: Connected to client (%s) using port <%d>\n", hostName, cdata.portnum);
 
             // send output to stdout
             if(debug){
@@ -177,7 +180,9 @@ int processCommands(int controlfd){
                 break;
             case 'C':
                 printf("Child <%d>: C from client\n", getpid());
-                writeToFd(controlfd, "A\n");
+                if( cd(controlfd, command + 1) < 0 && debug){
+                    writeToFd(2, "Error executing cd command");
+                }
                 break;
             case 'L':
                 printf("Child <%d>: L from client\n", getpid());
@@ -255,3 +260,33 @@ int parseArgs(int argnum, char** arguments){
     return 0;
 }
 
+/* Execute chdir to the given path. Return 0 on success, -1 on error */
+int cd(int controlfd, char *path){
+
+    int err;
+    char currentDir[PATH_MAX];
+
+    // Change directory to path
+    err = chdir(path);
+    if( err < 0 ){
+        // If error, write error message to controlfd
+        writeToFd(controlfd, "E");
+        writeToFd(controlfd, strerror(errno));
+        writeToFd(controlfd, "\n");
+        return -1;
+    }else{
+        // If no error, write acknowledgment
+        writeToFd(controlfd, "A\n");
+    }
+
+    // Output new diretory
+    if( debug ){
+        getcwd(currentDir, PATH_MAX);
+        if( currentDir == NULL ){
+            perror("getcwd");
+        }
+        printf("Child <%d>: Directory changed to %s\n", getpid(), currentDir);
+    }
+
+    return 0;
+}
