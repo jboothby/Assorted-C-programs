@@ -122,7 +122,7 @@ int processCommands(const char* hostname, int controlfd){
 
             // Call get with save flag set to 1
             if( get(tokens[1], hostname, controlfd, 1) < 0){
-                writeToFd(2, "get command did not execute properly\n");
+                writeToFd(2, "Get command did not execute properly\n");
             }
 
         /* SHOW COMMAND EXECUTION BLOCK */
@@ -130,7 +130,7 @@ int processCommands(const char* hostname, int controlfd){
 
             // Call get with the save flag set to 0
             if( get(tokens[1], hostname, controlfd, 0) < 0){
-                writeToFd(2, "show command did not execute properly\n");
+                writeToFd(2, "Show command did not execute properly\n");
             }
 
         /* PUT EXECUTION BLOCK */
@@ -138,7 +138,7 @@ int processCommands(const char* hostname, int controlfd){
 
             // Call put with the path, hostname, and controlfd
             if( put(tokens[1], hostname, controlfd) < 0){
-                writeToFd(2, "show command did not execute properly\n");
+                writeToFd(2, "Put command did not execute properly\n");
             }
 
 
@@ -402,7 +402,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
         
 
     // Create new file and open it
-    outputfd = open(filename, O_CREAT|O_WRONLY, 0600); 
+    outputfd = open(filename, O_CREAT|O_EXCL|O_WRONLY, 0700); 
     if( outputfd < 0 ){
         perror("open");
         close(datafd);

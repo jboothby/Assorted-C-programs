@@ -424,6 +424,9 @@ int ls(int controlfd, int datafd){
 
        wait(&err);      // Wait for child to finish executing
 
+       // Write to indicate command executed properly
+       writeToFd(controlfd, "A\n");
+
        if( debug ){
            printf("Child <%d>: Finished executing ls\n", getpid());
        }
@@ -436,10 +439,8 @@ int ls(int controlfd, int datafd){
            error(controlfd, errno);
            return -1;
        }
-   }
 
-   // Write acknowledge to client
-   writeToFd(controlfd, "A\n");
+   }
 
    return 0;
 }
@@ -507,7 +508,7 @@ int put(int controlfd, int datafd, char* path){
     } 
 
     // Create the new file
-    filefd = open(filename, O_CREAT|O_WRONLY, 0600);
+    filefd = open(filename, O_CREAT | O_EXCL | O_WRONLY, 0700);
     if( filefd < 0 ){
         error(controlfd, errno);
         return -1;
@@ -532,8 +533,6 @@ int put(int controlfd, int datafd, char* path){
         return -1;
     }
 
-    // Write ack to client
-    writeToFd(controlfd, "A\n");
     close(datafd);
 
     if( debug ){
