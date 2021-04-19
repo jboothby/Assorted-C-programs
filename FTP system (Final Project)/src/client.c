@@ -402,7 +402,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
         
 
     // Create new file and open it
-    outputfd = open(filename, O_CREAT|O_WRONLY, 0700); 
+    outputfd = open(filename, O_CREAT|O_WRONLY, 0600); 
     if( outputfd < 0 ){
         perror("open");
         close(datafd);
@@ -489,6 +489,9 @@ int put(char* path, const char *hostname, int controlfd){
         return -1;
     }
 
+    // Close data fd to signal transfer complete
+    close(datafd);
+
     // Write command to server
     writeToFd(controlfd, putWithPath);
     serverResponse = readFromFd(controlfd);
@@ -496,14 +499,12 @@ int put(char* path, const char *hostname, int controlfd){
         fprintf(stderr, "%s\n", serverResponse + 1);
         free(serverResponse);
         close(filefd);
-        close(datafd);
         return -1;
     }
 
     // If no errors, return 0 for success
     free(serverResponse);
     close(filefd);
-    close(datafd);
 
     return 0;
 
@@ -538,5 +539,3 @@ int morePipe(int datafd){
         
         return 0;
 }
-
-

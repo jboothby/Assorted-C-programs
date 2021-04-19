@@ -26,7 +26,8 @@ int processCommands(int controlfd);                         // Loop and handle t
 int cd(int controlfd, char *path);                          // Change directory to path
 int quit(int controlfd);                                    // Client disconnect, close fd
 int ls(int controlfd, int datafd);                          // Execute the ls command, pipe the results into datafd
-int get(int controlfd, int datafd, char* path);              // Get the file specified by path, write into the datafd
+int get(int controlfd, int datafd, char* path);             // Get the file specified by path, write into the datafd
+int put(int controlfd, int datafd, char* path);             // Create the file in the fd and save it locally
 void error(int controlfd, int errnum);                      // Handle errors by printing to the controlfd
 
 /* Handles program control */
@@ -72,15 +73,15 @@ int processCommands(int controlfd){
                 close(datafd);
                 break;
             case 'G':
-                printf("Child <%d>: G from client\n", getpid());
                 if( (get(controlfd, datafd, command + 1) < 0) && debug ){
                     printf("Child <%d>: get function returned non-zero status\n", getpid());
                 }
                 close(datafd);
                 break;
             case 'P':
-                printf("Child <%d>: P from client\n", getpid());
-                writeToFd(controlfd, "A\n");
+                if( (put(controlfd, datafd, command + 1) < 0) && debug){
+                    printf("Child <%d>: put function returned non-zero status\n", getpid());
+                }
                 close(datafd);
                 break;
             case 'Q':
@@ -479,6 +480,64 @@ int get(int controlfd, int datafd, char* path){
         error(controlfd, errno);
         close(datafd);
         return -1;
+    }
+
+    return 0;
+}
+
+/* Read file from datafd, create a file and save file locally */
+/* returns 0 on success or -1 on error */
+int put(int controlfd, int datafd, char* path){
+
+    int filefd;
+    char buf[256];
+    int actualRead, actualWrite;
+
+    // If there are slashes, the filename is everything after the last one
+    char *filename;
+    if( strchr(path, '/') != NULL ){
+        filename = strrchr(path, '/') + 1;  // +1 is pointer magic to skip the last /
+    }else{
+        filename = path;
+    }
+
+
+    if( debug ){
+        printf("Child <%d>: Creating file <%s>, saving to local\n", getpid(), filename);
+    } 
+
+    // Create the new file
+    filefd = open(filename, O_CREAT|O_WRONLY, 0600);
+    if( filefd < 0 ){
+        error(controlfd, errno);
+        return -1;
+    }
+
+    // Read from the datafd, write to file
+    while( (actualRead = read(datafd, buf, sizeof(buf)/sizeof(char))) > 0){
+        actualWrite = write(filefd, buf, actualRead);
+        // On write error, delete file 
+        if( actualWrite < 0 ){
+            error(controlfd, errno);
+            unlink(filename);
+            close(filefd);
+            return -1;
+        }
+    }
+    // On read error, delete file
+    if( actualRead < 0 ){
+        error(controlfd, errno);
+        unlink(filename);
+        close(filefd);
+        return -1;
+    }
+
+    // Write ack to client
+    writeToFd(controlfd, "A\n");
+    close(datafd);
+
+    if( debug ){
+        printf("Child <%d>: File transfer successful\n", getpid());
     }
 
     return 0;
