@@ -26,6 +26,8 @@ int processCommands(int controlfd);                         // Loop and handle t
 int cd(int controlfd, char *path);                          // Change directory to path
 int quit(int controlfd);                                    // Client disconnect, close fd
 int ls(int controlfd, int datafd);                          // Execute the ls command, pipe the results into datafd
+int get(int controlfd, int datafd, char* path);              // Get the file specified by path, write into the datafd
+void error(int controlfd, int errnum);                      // Handle errors by printing to the controlfd
 
 /* Handles program control */
 int main(int argc, char * argv[]){
@@ -54,8 +56,9 @@ int processCommands(int controlfd){
         }
         switch(command[0]){
             case 'D':
-                printf("Child <%d>: D from client\n", getpid());
-                datafd = dataConnection(controlfd);
+                if( (datafd = dataConnection(controlfd)) < 0 && debug){
+                    printf("Child <%d>: data connction returned non-zero status\n", getpid());
+                }
                 break;
             case 'C':
                 if( cd(controlfd, command + 1) < 0 && debug){
@@ -66,14 +69,19 @@ int processCommands(int controlfd){
                 if( ls(controlfd, datafd) < 0 && debug){
                     printf("Child <%d>: ls function returned non-zero status\n", getpid());
                 }
+                close(datafd);
                 break;
             case 'G':
                 printf("Child <%d>: G from client\n", getpid());
-                writeToFd(controlfd, "A\n");
+                if( (get(controlfd, datafd, command + 1) < 0) && debug ){
+                    printf("Child <%d>: get function returned non-zero status\n", getpid());
+                }
+                close(datafd);
                 break;
             case 'P':
                 printf("Child <%d>: P from client\n", getpid());
                 writeToFd(controlfd, "A\n");
+                close(datafd);
                 break;
             case 'Q':
                 if( quit(controlfd) < 0 && debug ){
@@ -94,11 +102,19 @@ int processCommands(int controlfd){
 struct connectData connection(int pnum, int queueLength){
 
     int err;
+    char caller[8];
     connectData cdata;
     cdata.errnum = 0;
 
+    // Save who called this function
+    if( pnum == 0 ){
+        sprintf(caller, "Child");
+    }else{
+        sprintf(caller, "Parent");
+    }
+
     if( debug ){
-        printf("Setting up connection using pnum <%d>\n", pnum);
+        printf("%s <%d>: Setting up connection using pnum <%d>\n", caller, getpid(), pnum);
     }
 
     // Declare socket and set options
@@ -117,7 +133,7 @@ struct connectData connection(int pnum, int queueLength){
     }
 
     if( debug ){
-        printf("Created socket with file descriptor <%d>\n", listenfd);
+        printf("%s <%d>: Created socket with file descriptor <%d>\n", caller, getpid(), listenfd);
     }
 
     // Declare sockaddress structure and set parameters
@@ -144,7 +160,7 @@ struct connectData connection(int pnum, int queueLength){
     cdata.portnum = ntohs(socketinfo.sin_port);
 
     if( debug ){
-        printf("Bound socket to port %d\n", cdata.portnum);
+        printf("%s <%d>: Bound socket to port <%d>\n", caller, getpid(), cdata.portnum);
     }
 
     // Make the listen call to spin up server
@@ -157,7 +173,7 @@ struct connectData connection(int pnum, int queueLength){
     }
 
     if( debug ){
-        printf("Listening on socket with queue size <%d>\n", queueLength);
+        printf("%s <%d>: Listening on socket with queue size <%d>\n", caller, getpid(), queueLength);
     }
 
     return cdata;
@@ -198,12 +214,7 @@ int dataConnection(int controlfd){
     // Wait on connection
     datafd = accept(cdata.listenfd, (struct sockaddr*) &clientAddr, &length);
     if( datafd < 0 ){
-        if( debug ){
-            perror("accept");
-        }
-        writeToFd(controlfd, "E");
-        writeToFd(controlfd, strerror(errno));
-        writeToFd(controlfd, "\n");
+        error(controlfd, errno);
         return -1;
     }
 
@@ -272,11 +283,11 @@ int serverConnection(struct connectData cdata){
             // Close parent copy of file descriptor
             close(connectfd);
 
-            printf("Parent: Connected to client (%s) using port <%d>\n", hostName, cdata.portnum);
+            printf("Parent <%d>: Connected to client (%s) using port <%d>\n", getpid(), hostName, cdata.portnum);
 
             // send output to stdout
             if(debug){
-                printf("Parent: Forked process <%d>\n",procId);
+                printf("Parent <%d> : Forked process <%d>\n", getpid(), procId);
                 fflush(stdout);
             } 
 
@@ -344,25 +355,17 @@ int parseArgs(int argnum, char** arguments){
 }
 
 /* Execute chdir to the given path. Return 0 on success, -1 on error */
+/* Returns 0 on success or -1 on error*/
 int cd(int controlfd, char *path){
 
     int err;
     char currentDir[PATH_MAX];
 
-    if( debug ){
-        printf("Child <%d>: Changing directory to %s\n", getpid(), path);
-    }
-
     // Change directory to path
     err = chdir(path);
     if( err < 0 ){
         // If error, write error message to controlfd
-        writeToFd(controlfd, "E");
-        writeToFd(controlfd, strerror(errno));
-        writeToFd(controlfd, "\n");
-        if( debug ){
-            printf("Child <%d>: Error: %s\n", getpid(), strerror(errno));
-        }
+        error(controlfd, errno);
         return -1;
     }else{
         // If no error, write acknowledgment
@@ -402,6 +405,7 @@ int quit(int controlfd){
 }
 
 /* Execute the ls command on local. Send results through datafd */
+/* Returns 0 on success or -1 on error*/
 int ls(int controlfd, int datafd){
    int err; 
    int procId;
@@ -428,12 +432,7 @@ int ls(int controlfd, int datafd){
 
        // Execute ls command, write error if it happens
        if( execlp("ls", "ls", "-l", "-a", (char *) NULL) == -1){
-           writeToFd(controlfd, "E");
-           writeToFd(controlfd, strerror(errno));
-           writeToFd(controlfd, "\n");
-           if( debug ){
-               perror("exec");
-           }
+           error(controlfd, errno);
            return -1;
        }
    }
@@ -442,4 +441,58 @@ int ls(int controlfd, int datafd){
    writeToFd(controlfd, "A\n");
 
    return 0;
+}
+
+/* Read the file at <path> and write into datafd*/
+/* Returns 0 on success or -1 on error*/
+int get(int controlfd, int datafd, char* path){
+    int filefd;
+    char buf[256];
+    int actualRead, actualWrite;
+
+    if( debug ){
+        printf("Child <%d>: Getting file at <%s>\n", getpid(), path);
+    }
+
+    // Open file, handle errors
+    filefd = open(path, O_RDONLY);
+    if( filefd < 0 ){
+        error(controlfd, errno);
+        close(datafd);
+        return -1;
+    }
+
+    // Send acknowledge to client
+    writeToFd(controlfd, "A\n");
+
+    // Read contents of file into buffer
+    while((actualRead = read(filefd, buf, sizeof(buf)/sizeof(char))) > 0){
+        // Write contents of buffer into datafd
+        actualWrite = write(datafd, buf, actualRead);
+        if( actualWrite < 0 ){
+            error(controlfd, errno);
+            close(datafd);
+            return -1;
+        }
+    }
+    if( actualRead < 0 ){
+        error(controlfd, errno);
+        close(datafd);
+        return -1;
+    }
+
+    return 0;
+}
+
+/* Handle error output properly */
+void error(int controlfd, int errnum){
+    // Send error output to client
+    writeToFd(controlfd, "E");
+    writeToFd(controlfd, strerror(errnum));
+    writeToFd(controlfd, "\n");
+
+    // Print errors on server side if debug output
+    if( debug ){
+        printf("Process <%d>: Error: %s\n", getpid(), strerror(errnum));
+    }
 }
