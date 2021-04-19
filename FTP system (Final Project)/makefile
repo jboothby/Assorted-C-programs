@@ -3,23 +3,27 @@ SRC_DIR = src
 CCFLAGS = -g -Wall -Iinclude
 CLIENT = client
 SERVER = server
-OBJS = fdio.o
+SERVEROBJS = serverHandler.o
+COMMONOBJS = fdio.o
 
 .PHONEY: clean memcheck
 
-all: fdio.o client server
+all: client server
 
-client:
-	$(CC) $(CCFLAGS) -o $(CLIENT) $(SRC_DIR)/client.c $(OBJS)
+client: $(COMMONOBJS)
+	$(CC) $(CCFLAGS) -o $(CLIENT) $(SRC_DIR)/client.c $(COMMONOBJS)
 
-server:
-	$(CC) $(CCFLAGS) -o $(SERVER) $(SRC_DIR)/server.c $(OBJS)
+server:	$(COMMONOBJS) $(SERVEROBJS)
+	$(CC) $(CCFLAGS) -o $(SERVER) $(SRC_DIR)/server.c $(COMMONOBJS) $(SERVEROBJS)
 
 fdio.o:
 	$(CC) $(CCFLAGS) -c $(SRC_DIR)/fdio.c
+
+serverHandler.o:
+	$(CC) $(CCFLAGS) -c $(SRC_DIR)/serverHandler.c
 
 memcheck: $(CLIENT)
 	valgrind --tool=memcheck --track-origins=yes --leak-check=full ./$(CLIENT) -d localhost
 	
 clean:
-	rm -f $(CLIENT) $(SERVER) $(OBJS)
+	rm -f $(CLIENT) $(SERVER) $(COMMONOBJS) $(SERVEROBJS)
