@@ -56,7 +56,9 @@ char* readFromFd(int fd){
 
     fdString[count] = '\0';    // add null terminator
 
-    writeToFd(1, "\n");
+    if( fd == 0){
+        writeToFd(1, "\n");
+    }
 
     return fdString;
 }    

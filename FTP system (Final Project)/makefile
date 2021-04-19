@@ -5,7 +5,7 @@ CLIENT = client
 SERVER = server
 OBJS = fdio.o
 
-.PHONEY: all clean memcheck
+.PHONEY: clean memcheck
 
 all: fdio.o client server
 

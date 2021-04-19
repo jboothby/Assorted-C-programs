@@ -321,6 +321,8 @@ int makeDataConnection(const char* hostname, int controlfd){
             printf("Attempting connection on portnum: <%s>\n", substr);
         // Convert string number to integer, and make connection on that port
         datafd = attemptConnection(hostname, atoi(substr)); 
+        if( debug )
+            printf("Data connection successful\n");
         free(serverResponse);
     }
     return datafd;

@@ -1,3 +1,4 @@
+
 /* Server side of the FTP system */
 
 #include <mftp.h>
@@ -8,8 +9,9 @@ static int debug = 0;       // Debug flag for verbose output
 
 /* ------------ Structures --------------------- */
 typedef struct connectData{       // Holds data about a connection
-    int listenfd;
-    int portnum;
+    int listenfd;                   // file descriptor for accept
+    int portnum;                    // Port for connection
+    int errnum;                     // Value of errno if error occurs
 }connectData;
     
 
@@ -18,7 +20,7 @@ typedef struct connectData{       // Holds data about a connection
 
 struct connectData connection(int pnum, int queueLength);   // Start a connection on pnum, or random if pnum = 0
 int serverConnection( struct connectData cdata );           // Handle starting server connection on port <pnum>
-int dataConnection(struct connectData cdata);               // Start a data connection
+int dataConnection(int controlfd);                          // Start a data connection
 int parseArgs(int argnum, char** arguments);                // Parse arguments, return port number if -p flag or -1 for default
 int processCommands(int controlfd);                         // Loop and handle the commands from the client
 int cd(int controlfd, char *path);                          // Change directory to path
@@ -45,22 +47,25 @@ struct connectData connection(int pnum, int queueLength){
 
     int err;
     connectData cdata;
+    cdata.errnum = 0;
 
     if( debug ){
-        printf("Setting up connection on port <%d>\n", pnum);
+        printf("Setting up connection using pnum <%d>\n", pnum);
     }
 
     // Declare socket and set options
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if( listenfd < 0){
         perror("socket");
-        exit(-errno);
+        cdata.errnum = errno;
+        return cdata;
     }
     // ensure socket can be reused (avoid error)
     err = setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)); 
     if( err < 0 ){
         perror("setsocketopt");
-        exit(-errno);
+        cdata.errnum = errno;
+        return cdata;
     }
 
     if( debug ){
@@ -77,12 +82,18 @@ struct connectData connection(int pnum, int queueLength){
     // Attempt to bind the socket
     if( bind( listenfd, (struct sockaddr*) &servAddr, sizeof(servAddr)) < 0 ){
         perror("bind");
-        exit(1);
+        cdata.errnum = errno;
+        return cdata;
     }
+
+    // Populate a strcture with the socket info
+    struct sockaddr_in socketinfo = {0};
+    socklen_t length = sizeof(struct sockaddr_in);  // length for getsockname
+    getsockname(listenfd, (struct sockaddr*) &socketinfo, &length);
 
     // Assign return values
     cdata.listenfd = listenfd;
-    cdata.portnum = ntohs(servAddr.sin_port);
+    cdata.portnum = ntohs(socketinfo.sin_port);
 
     if( debug ){
         printf("Bound socket to port %d\n", cdata.portnum);
@@ -93,7 +104,8 @@ struct connectData connection(int pnum, int queueLength){
     err = listen( listenfd, queueLength);
     if( err < 0 ){
         perror("listen");
-        exit(-errno);
+        cdata.errnum = errno;
+        return cdata;
     }
 
     if( debug ){
@@ -102,6 +114,70 @@ struct connectData connection(int pnum, int queueLength){
 
     return cdata;
 }
+
+/* Start a data connection, return the file descriptor or -1 on error */
+int dataConnection(int controlfd){
+
+    int datafd;                                         // File descriptor for data connection
+    struct sockaddr_in clientAddr;                      // stucture holds client information
+    socklen_t length = sizeof(struct sockaddr_in); 
+
+    char ackWithPort[8];    // Enough for A*****\n\0
+
+    if( debug ){
+        printf("Child <%d>: Starting Data connection\n", getpid());
+    }
+
+    // Start new fd with random port
+    connectData cdata = connection(0, 1); 
+
+    // Catch possible error results from connection
+    if( cdata.errnum ){
+        writeToFd(controlfd, "E");
+        writeToFd(controlfd, strerror(cdata.errnum));
+        writeToFd(controlfd, "\n");
+        return -1;
+    }
+
+    if( debug ){
+        printf("Child <%d>: Created data connection on port <%d>\n", getpid(), cdata.portnum);
+    }
+
+    // Create ack string, write to fd
+    sprintf(ackWithPort, "A%d\n", cdata.portnum);
+    writeToFd(controlfd, ackWithPort);            
+
+    // Wait on connection
+    datafd = accept(cdata.listenfd, (struct sockaddr*) &clientAddr, &length);
+    if( datafd < 0 ){
+        if( debug ){
+            perror("accept");
+        }
+        writeToFd(controlfd, "E");
+        writeToFd(controlfd, strerror(errno));
+        writeToFd(controlfd, "\n");
+        return -1;
+    }
+
+    // Get address and resolve to hostname
+    char hostName[NI_MAXHOST];
+    int hostEntry;
+    hostEntry = getnameinfo((struct sockaddr*) &clientAddr,
+                            sizeof(clientAddr),
+                            hostName,
+                            sizeof(hostName),
+                            NULL, 0, NI_NUMERICSERV);
+    if( hostEntry != 0 && debug ){
+        printf("Error: %s\n", gai_strerror(hostEntry));
+    }
+
+    if( debug ){
+        printf("Child <%d>: Connection successful with host <%s> on port <%d>, using fd <%d>\n", getpid(), hostName, cdata.portnum, datafd);
+    }
+
+    return datafd;
+}
+    
 
 // Spin up a server on pnum and wait for a connection
 // Forks off new process for each connection
@@ -171,13 +247,16 @@ int serverConnection(struct connectData cdata){
 int processCommands(int controlfd){
     printf("Child <%d>: Processing commands from controlfd <%d>\n", getpid(), controlfd);
     char* command;
-    char* parameter;
+    int datafd;
     for(;;){
         command = readFromFd(controlfd);
+        if( strlen(command) == 0 ){
+            continue;
+        }
         switch(command[0]){
             case 'D':
                 printf("Child <%d>: D from client\n", getpid());
-                writeToFd(controlfd, "A\n");
+                datafd = dataConnection(controlfd);
                 break;
             case 'C':
                 if( cd(controlfd, command + 1) < 0 && debug){
@@ -187,6 +266,7 @@ int processCommands(int controlfd){
             case 'L':
                 printf("Child <%d>: L from client\n", getpid());
                 writeToFd(controlfd, "A\n");
+                close(datafd);
                 break;
             case 'G':
                 printf("Child <%d>: G from client\n", getpid());
@@ -202,7 +282,7 @@ int processCommands(int controlfd){
                 }
                 return 0;
             default:
-                printf("Error. Invalid command from client\n");
+                printf("Error. Invalid command <%c> from client\n", command[0]);
         }
 
         free(command);
