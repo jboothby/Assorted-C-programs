@@ -22,6 +22,7 @@ int dataConnection(struct connectData cdata);               // Start a data conn
 int parseArgs(int argnum, char** arguments);                // Parse arguments, return port number if -p flag or -1 for default
 int processCommands(int controlfd);                         // Loop and handle the commands from the client
 int cd(int controlfd, char *path);                          // Change directory to path
+int quit(int controlfd);                                    // Client disconnect, close fd
 
 /* Handles program control */
 int main(int argc, char * argv[]){
@@ -179,9 +180,8 @@ int processCommands(int controlfd){
                 writeToFd(controlfd, "A\n");
                 break;
             case 'C':
-                printf("Child <%d>: C from client\n", getpid());
                 if( cd(controlfd, command + 1) < 0 && debug){
-                    writeToFd(2, "Error executing cd command");
+                    printf("Child <%d>: cd function returned non-zero status\n", getpid());
                 }
                 break;
             case 'L':
@@ -197,8 +197,9 @@ int processCommands(int controlfd){
                 writeToFd(controlfd, "A\n");
                 break;
             case 'Q':
-                printf("Child <%d>: Q from client\n", getpid());
-                writeToFd(controlfd, "A\n");
+                if( quit(controlfd) < 0 && debug ){
+                    printf("Child <%d>: quit function returned non-zero status\n", getpid());
+                }
                 return 0;
             default:
                 printf("Error. Invalid command from client\n");
@@ -266,6 +267,10 @@ int cd(int controlfd, char *path){
     int err;
     char currentDir[PATH_MAX];
 
+    if( debug ){
+        printf("Child <%d>: Changing directory to %s\n", getpid(), path);
+    }
+
     // Change directory to path
     err = chdir(path);
     if( err < 0 ){
@@ -273,6 +278,9 @@ int cd(int controlfd, char *path){
         writeToFd(controlfd, "E");
         writeToFd(controlfd, strerror(errno));
         writeToFd(controlfd, "\n");
+        if( debug ){
+            printf("Child <%d>: Error: %s\n", getpid(), strerror(errno));
+        }
         return -1;
     }else{
         // If no error, write acknowledgment
@@ -286,6 +294,26 @@ int cd(int controlfd, char *path){
             perror("getcwd");
         }
         printf("Child <%d>: Directory changed to %s\n", getpid(), currentDir);
+    }
+
+    return 0;
+}
+
+/* Perform actions to disconnect client */
+/* Returns 0 on success, -1 on error */
+int quit(int controlfd){
+    
+    if( debug ){
+        printf("Child <%d>: Exit command detected. Ending connection\n", getpid());
+    }
+
+    // Close the control file descriptor, write acknowledge
+    writeToFd(controlfd, "A\n");
+    if( close(controlfd) < 0 ){
+        if( debug ){
+            perror("close");
+        }
+        return -1;
     }
 
     return 0;
