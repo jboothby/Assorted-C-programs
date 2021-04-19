@@ -42,7 +42,7 @@ int main(int argc, char * argv[]){
 
 /* Read and process commands from the client until the client exits */
 int processCommands(int controlfd){
-    printf("Child <%d>: Processing commands from controlfd <%d>\n", getpid(), controlfd);
+    if( debug ) printf("Child <%d>: Processing commands from controlfd <%d>\n", getpid(), controlfd);
     char* command;
     int datafd;
     for(;;){
@@ -292,7 +292,7 @@ int serverConnection(struct connectData cdata){
 
 
         }else{                                          // child block
-            printf("Child <%d>: Child block executing current command\n", getpid());
+            if( debug) printf("Child <%d>: Child block executing current command\n", getpid());
             fflush(stdout);
             processCommands(connectfd); // Hand execution over to command handler
             exit(0);                    // exit the child
@@ -316,6 +316,7 @@ int parseArgs(int argnum, char** arguments){
 
     // If no arguments, set default and return
     if( argnum == 1){
+        printf("Debug flag not set\n");
         return 0;
     }
 
