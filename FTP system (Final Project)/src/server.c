@@ -25,6 +25,7 @@ int parseArgs(int argnum, char** arguments);                // Parse arguments, 
 int processCommands(int controlfd);                         // Loop and handle the commands from the client
 int cd(int controlfd, char *path);                          // Change directory to path
 int quit(int controlfd);                                    // Client disconnect, close fd
+int ls(int controlfd, int datafd);                          // Execute the ls command, pipe the results into datafd
 
 /* Handles program control */
 int main(int argc, char * argv[]){
@@ -38,6 +39,53 @@ int main(int argc, char * argv[]){
         serverConnection(connection(PORTNUM, 4));
     }
 
+    return 0;
+}
+
+/* Read and process commands from the client until the client exits */
+int processCommands(int controlfd){
+    printf("Child <%d>: Processing commands from controlfd <%d>\n", getpid(), controlfd);
+    char* command;
+    int datafd;
+    for(;;){
+        command = readFromFd(controlfd);
+        if( strlen(command) == 0 ){
+            continue;
+        }
+        switch(command[0]){
+            case 'D':
+                printf("Child <%d>: D from client\n", getpid());
+                datafd = dataConnection(controlfd);
+                break;
+            case 'C':
+                if( cd(controlfd, command + 1) < 0 && debug){
+                    printf("Child <%d>: cd function returned non-zero status\n", getpid());
+                }
+                break;
+            case 'L':
+                if( ls(controlfd, datafd) < 0 && debug){
+                    printf("Child <%d>: ls function returned non-zero status\n", getpid());
+                }
+                break;
+            case 'G':
+                printf("Child <%d>: G from client\n", getpid());
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'P':
+                printf("Child <%d>: P from client\n", getpid());
+                writeToFd(controlfd, "A\n");
+                break;
+            case 'Q':
+                if( quit(controlfd) < 0 && debug ){
+                    printf("Child <%d>: quit function returned non-zero status\n", getpid());
+                }
+                return 0;
+            default:
+                printf("Error. Invalid command <%c> from client\n", command[0]);
+        }
+
+        free(command);
+    }
     return 0;
 }
 
@@ -243,52 +291,6 @@ int serverConnection(struct connectData cdata){
     return 0;
 }
 
-/* Read and process commands from the client until the client exits */
-int processCommands(int controlfd){
-    printf("Child <%d>: Processing commands from controlfd <%d>\n", getpid(), controlfd);
-    char* command;
-    int datafd;
-    for(;;){
-        command = readFromFd(controlfd);
-        if( strlen(command) == 0 ){
-            continue;
-        }
-        switch(command[0]){
-            case 'D':
-                printf("Child <%d>: D from client\n", getpid());
-                datafd = dataConnection(controlfd);
-                break;
-            case 'C':
-                if( cd(controlfd, command + 1) < 0 && debug){
-                    printf("Child <%d>: cd function returned non-zero status\n", getpid());
-                }
-                break;
-            case 'L':
-                printf("Child <%d>: L from client\n", getpid());
-                writeToFd(controlfd, "A\n");
-                close(datafd);
-                break;
-            case 'G':
-                printf("Child <%d>: G from client\n", getpid());
-                writeToFd(controlfd, "A\n");
-                break;
-            case 'P':
-                printf("Child <%d>: P from client\n", getpid());
-                writeToFd(controlfd, "A\n");
-                break;
-            case 'Q':
-                if( quit(controlfd) < 0 && debug ){
-                    printf("Child <%d>: quit function returned non-zero status\n", getpid());
-                }
-                return 0;
-            default:
-                printf("Error. Invalid command <%c> from client\n", command[0]);
-        }
-
-        free(command);
-    }
-    return 0;
-}
 
 
 /* Parse command line arguments. Return portnumber if -p flag used, 0 for default portnum, exit on error*/
@@ -397,4 +399,47 @@ int quit(int controlfd){
     }
 
     return 0;
+}
+
+/* Execute the ls command on local. Send results through datafd */
+int ls(int controlfd, int datafd){
+   int err; 
+   int procId;
+
+   // For off new process to handle ls
+   procId = fork();
+   // In parent, just wait for child to exit
+   if( procId ){
+
+       close( datafd ); // close datafd, only child needs it
+
+       if( debug ){
+           printf("Child <%d>: spawned new process <%d> to handle ls\n", getpid(), procId);
+       }
+
+       wait(&err);      // Wait for child to finish executing
+
+       if( debug ){
+           printf("Child <%d>: Finished executing ls\n", getpid());
+       }
+   }else{
+       // rename stdout to datafd
+       close(1); dup(datafd); close(datafd);
+
+       // Execute ls command, write error if it happens
+       if( execlp("ls", "ls", "-l", "-a", (char *) NULL) == -1){
+           writeToFd(controlfd, "E");
+           writeToFd(controlfd, strerror(errno));
+           writeToFd(controlfd, "\n");
+           if( debug ){
+               perror("exec");
+           }
+           return -1;
+       }
+   }
+
+   // Write acknowledge to client
+   writeToFd(controlfd, "A\n");
+
+   return 0;
 }
