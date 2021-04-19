@@ -1,11 +1,8 @@
-
 /* Server side of the FTP system */
 
 #include <mftp.h>
-
 /* ----------- Defines and Globals --------------*/
 static int debug = 0;       // Debug flag for verbose output
-
 
 /* ------------ Structures --------------------- */
 typedef struct connectData{       // Holds data about a connection
@@ -13,8 +10,6 @@ typedef struct connectData{       // Holds data about a connection
     int portnum;                    // Port for connection
     int errnum;                     // Value of errno if error occurs
 }connectData;
-    
-
 
 /* ------------ Function Prototypes ------------- */
 
@@ -129,6 +124,7 @@ struct connectData connection(int pnum, int queueLength){
     err = setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)); 
     if( err < 0 ){
         perror("setsocketopt");
+        close(listenfd);
         cdata.errnum = errno;
         return cdata;
     }
@@ -148,6 +144,7 @@ struct connectData connection(int pnum, int queueLength){
     if( bind( listenfd, (struct sockaddr*) &servAddr, sizeof(servAddr)) < 0 ){
         perror("bind");
         cdata.errnum = errno;
+        close(listenfd);
         return cdata;
     }
 
@@ -235,6 +232,7 @@ int dataConnection(int controlfd){
         printf("Child <%d>: Connection successful with host <%s> on port <%d>, using fd <%d>\n", getpid(), hostName, cdata.portnum, datafd);
     }
 
+    close(cdata.listenfd);
     return datafd;
 }
     
@@ -265,6 +263,7 @@ int serverConnection(struct connectData cdata){
             exit(-errno);
         }
 
+
         // Get address and resolve to hostname
         char hostName[NI_MAXHOST];
         int hostEntry;
@@ -283,7 +282,6 @@ int serverConnection(struct connectData cdata){
         if( procId ){                                   // parent block
             // Close parent copy of file descriptor
             close(connectfd);
-
             printf("Parent <%d>: Connected to client (%s) using port <%d>\n", getpid(), hostName, cdata.portnum);
 
             // send output to stdout
@@ -511,15 +509,21 @@ int put(int controlfd, int datafd, char* path){
     filefd = open(filename, O_CREAT | O_EXCL | O_WRONLY, 0700);
     if( filefd < 0 ){
         error(controlfd, errno);
+        close(filefd);
         return -1;
     }
+
+    // Write success to client
+    writeToFd(controlfd, "A\n");
 
     // Read from the datafd, write to file
     while( (actualRead = read(datafd, buf, sizeof(buf)/sizeof(char))) > 0){
         actualWrite = write(filefd, buf, actualRead);
         // On write error, delete file 
         if( actualWrite < 0 ){
-            error(controlfd, errno);
+            if( debug ){
+                perror("write");
+            }
             unlink(filename);
             close(filefd);
             return -1;
@@ -527,13 +531,13 @@ int put(int controlfd, int datafd, char* path){
     }
     // On read error, delete file
     if( actualRead < 0 ){
-        error(controlfd, errno);
+        if( debug ){
+            perror("read");
+        }
         unlink(filename);
         close(filefd);
         return -1;
     }
-
-    close(datafd);
 
     if( debug ){
         printf("Child <%d>: File transfer successful\n", getpid());

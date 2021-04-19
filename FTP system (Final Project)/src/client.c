@@ -2,7 +2,6 @@
 
 /* ------------------- Defines and Globals ---------------------- */
 #define PORTNUM 37896   // Port number for connection to server
-
 static int debug = 0;   // Debug flag for verbose output
 
 /* --------------------- Function Prototypes -------------------- */
@@ -11,7 +10,6 @@ int attemptConnection( const char *address, int pnum);      // Handle spinning u
 int makeDataConnection(const char* hostname, int controlfd);// data socket wrapper for attemptConnection
 int processCommands(const char* hostname, int controlfd);   // Process commands
 int morePipe(int datafd);                                   // Pipe the results from the fd into more
-int cdLocal(char* path);                                    // cd to path on local machine
 int lsLocal();                                              // execute ls command on local
 int lsRemote(const char* hostname, int controlfd);          // execute ls on server
 int cdRemote(const char* path, int controlfd);              // execute cd on server
@@ -45,6 +43,7 @@ int processCommands(const char* hostname, int controlfd){
 
         // Read command from stdin, then split into tokens
         command = readFromFd(0);
+        if( debug ) printf("Command string '%s'\n", command);
         if( (tokens = tokenSplit(command)) == NULL){
             free(command);
             continue;
@@ -56,6 +55,8 @@ int processCommands(const char* hostname, int controlfd){
 
         /* EXIT COMMAND EXECUTION BLOCK */
         if( strcmp(tokens[0], "exit") == 0 ){
+
+            if( debug) printf("Executing exit command\n");
 
             // Write command to server, and read response 
             writeToFd(controlfd, "Q\n");
@@ -81,23 +82,27 @@ int processCommands(const char* hostname, int controlfd){
         }else if( strcmp(tokens[0], "cd") == 0){
             char currentDir[PATH_MAX];
 
+            if( debug) printf("Executing command <cd> with parameter <%s>\n", tokens[1]);
+
             // Change directory
             err = chdir(tokens[1]);
             if( err < 0 ){
-                perror("chdir");
+                perror("Error");
             }
 
             // Output change if debug flag set
             if( debug ){
                 getcwd(currentDir, PATH_MAX);
                 if( currentDir == NULL){
-                    perror("getcwd");
+                    perror("Error");
                 }
                 printf("Directory changed to %s\n", currentDir);
             }
 
         /* RCD COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rcd") == 0){
+
+            if( debug) printf("Executing command <rcd> with parameter <%s>\n", tokens[1]);
 
             if( cdRemote(tokens[1], controlfd) < 0  && debug){
                 writeToFd(2, "rcd command did not execute properly\n");
@@ -106,6 +111,8 @@ int processCommands(const char* hostname, int controlfd){
         /* LS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "ls") == 0){
 
+            if( debug) printf("Executing command <ls>\n");
+
             if( lsLocal() < 0  && debug){
                 writeToFd(2, "ls command did not execute properly\n");
             }
@@ -113,12 +120,16 @@ int processCommands(const char* hostname, int controlfd){
         /* RLS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rls") == 0){
 
+            if( debug) printf("Executing command <rls>\n");
+
             if( lsRemote(hostname, controlfd) < 0){
                 writeToFd(2, "rls command did not execute properly\n");
             }
 
         /* GET COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "get") == 0){
+
+            if( debug) printf("Executing command <get> with parameter <%s>\n", tokens[1]);
 
             // Call get with save flag set to 1
             if( get(tokens[1], hostname, controlfd, 1) < 0){
@@ -128,6 +139,8 @@ int processCommands(const char* hostname, int controlfd){
         /* SHOW COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "show") == 0){
 
+            if( debug) printf("Executing command <show> with parameter <%s>\n", tokens[1]);
+
             // Call get with the save flag set to 0
             if( get(tokens[1], hostname, controlfd, 0) < 0){
                 writeToFd(2, "Show command did not execute properly\n");
@@ -136,6 +149,8 @@ int processCommands(const char* hostname, int controlfd){
         /* PUT EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "put") == 0){
 
+            if( debug) printf("Executing command <put> with parameter <%s>\n", tokens[1]);
+
             // Call put with the path, hostname, and controlfd
             if( put(tokens[1], hostname, controlfd) < 0){
                 writeToFd(2, "Put command did not execute properly\n");
@@ -143,7 +158,7 @@ int processCommands(const char* hostname, int controlfd){
 
 
         }else{
-            printf("Command %s not recognized\n", tokens[0]);
+            printf("Command %s not recognized, ignoring\n", tokens[0]);
 
         }
 
@@ -178,16 +193,20 @@ int attemptConnection( const char* address, int pnum){
     // Create socket with server 
     sockfd = socket(actualData -> ai_family, actualData -> ai_socktype, 0);
     if( sockfd < 0 ){
-        perror("socket");
+        perror("Error");
         exit(-1);
     }
+
+    if( debug ) printf("Created socket with descripter %d\n", sockfd);
 
     // Attempt server connection
     err = connect( sockfd, actualData -> ai_addr, actualData -> ai_addrlen);
     if( err < 0 ){
-        perror("connect");
+        perror("Error");
         exit(-1);
     }
+
+    if( debug ) printf("Connected to %s on port %d\n", address, pnum);
 
     freeaddrinfo(actualData);
 
@@ -211,6 +230,7 @@ char* parseArgs(int argnum, char** arguments){
     if( strcmp( arguments[1], "-d") == 0) {
         if( argnum == 3 ){
             debug = 1;
+            printf("Parent: Debug output enabled\n");
             return(arguments[2]);
         }else{
             fprintf(stderr, "%s\n", usageMsg);
@@ -236,14 +256,14 @@ int lsLocal(){
     if( fork() ){// Parent just waits on children to exit
         wait(&err);
         if( err < 0 ){
-            perror("pipe");
+            perror("Error");
             return -1;
         }
     }else{// Child process forks again to run each program
 
         // Initiate pipe and rename reader and writer sides
         if( pipe(pipefd) < 0 ){
-            perror("pipe");
+            perror("Error");
             return -1;
         }
         rdr = pipefd[0]; wtr = pipefd[1];
@@ -252,14 +272,14 @@ int lsLocal(){
             close(wtr);
             close(0); dup(rdr); close(rdr);     // make stdin go to reader
             if( execlp("more", "more",  "-20", (char *) NULL) == -1){
-                perror("exec");
+                perror("Error");
                 return -1;
             }
         }else{          // Execute ls -l in the child
             close(rdr);
             close(1); dup(wtr); close(wtr); // make stdout go to writer
             if( execlp("ls", "ls", "-l", "-a", (char *) NULL) == -1){
-                perror("exec");
+                perror("Error");
                 return -1;
             }
         }
@@ -404,7 +424,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
     // Create new file and open it
     outputfd = open(filename, O_CREAT|O_EXCL|O_WRONLY, 0700); 
     if( outputfd < 0 ){
-        perror("open");
+        perror("Error");
         close(datafd);
         return -1;
     }
@@ -414,14 +434,14 @@ int get(char* path, const char *hostname, int controlfd, int save){
         actualWrite = write(outputfd, buf, actualRead);
         // on write error, delete file, and return -1
         if( actualWrite < 0){
-            perror("write");
+            perror("Error");
             returnStatus = -1;
             break;
         }
     }
     // On read error, delete file and return
     if( actualRead < 0 ){
-        perror("read");
+        perror("Error");
         returnStatus = -1;
     }
 
@@ -467,7 +487,7 @@ int put(char* path, const char *hostname, int controlfd){
     // Write contents of local file at path into datafd
     filefd = open(path, O_RDONLY);
     if( filefd < 0){
-        perror("Write");
+        perror("Error");
         close(datafd);
         return -1;
     }
@@ -476,14 +496,14 @@ int put(char* path, const char *hostname, int controlfd){
     while((actualRead = read(filefd, buf, sizeof(buf)/sizeof(char))) > 0){
         actualWrite = write(datafd, buf, actualRead);
         if( actualWrite < 0){
-            perror("Write");
+            perror("Error");
             close(filefd);
             close(datafd);
             return -1;
         }
     }
     if(actualRead < 0){
-        perror("Read");
+        perror("Error");
         close(filefd);
         close(datafd);
         return -1;
@@ -513,29 +533,29 @@ int put(char* path, const char *hostname, int controlfd){
 /* Pipe the results from the data fd into the more command */
 int morePipe(int datafd){
 
-        int err;
+    int err;
 
-        // Fork off to pipe the datafd information into stdin for more
-        if( fork() ){
-            close(datafd);
+    // Fork off to pipe the datafd information into stdin for more
+    if( fork() ){
+        close(datafd);
 
-            // Wait for child (more -20) to finish
-            wait(&err);
-            if( err < 0){
-                perror("wait");
-                return -1;
-            }
-
-            return 0;
-        }else{
-            // Redirect data socket to stdin
-            close(0); dup(datafd); close(datafd);
-
-            // Send everything in the datafd to more
-            if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
-                perror("exec");
-            }
+        // Wait for child (more -20) to finish
+        wait(&err);
+        if( err < 0){
+            perror("Error");
+            return -1;
         }
-        
+
         return 0;
+    }else{
+        // Redirect data socket to stdin
+        close(0); dup(datafd); close(datafd);
+
+        // Send everything in the datafd to more
+        if( execlp("more", "more", "-20", (char*) NULL) == -1 ){
+            perror("Error");
+        }
+    }
+
+    return 0;
 }

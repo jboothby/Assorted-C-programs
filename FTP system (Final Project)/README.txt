@@ -13,10 +13,12 @@ client serverIP <-d>
     
     serverIP is a symbolic host name or an IPv4 dotted-decimal address to the server
     -d: debugging flag that enables verbose output
+    
 
-server <-d>
+server <-d> <-p portnum>
 
     -d: debugging flag that enables verbose output
+    -p portnum: portnum is the desired port to make the server on
 
 
 After running the client program and a successful connection to the server is made, the following
@@ -30,4 +32,3 @@ rls             - execute the ls -l command on the server, show output 20 lines 
 get <pathname>  - retrieve <pathname> from the server and store it locally in the clients cwd. Must be a regular file, and readable
 show <pathname> - retrive the contents of <pathname> and show 20 lines at a time. Press space to show more. Must be regular file and readable.
 put <pathname>  - transmite the contents of <pathname> to server and store in server cwd. Must be a regular file and readable.
-
