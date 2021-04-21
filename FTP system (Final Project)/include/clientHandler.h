@@ -55,4 +55,21 @@ int get(char* path, const char *hostname, int controlfd, int save);
 /* returns 0 on succss, -1 on error                 */
 int morePipe(int datafd);
 
+/* Create a connection with the host at address     */
+/* Using port pnum. If pnum is zero, it will use    */
+/* a random available port for the connection       */
+/* returns the file descripter for the socket on    */
+/* success, or -1 on error                          */
+int attemptConnection( const char *address, int pnum);
+
+/* Create a data connection with the server         */
+/* This is a wrapper for attemptConnection and      */
+/* will use 0 to specify a random port number       */
+/* Then writes this port number to the controlfd    */
+/* so that the server can connect to it             */
+/* returns the file descripter for the socket on    */
+/* success, or -1 on error                          */
+int makeDataConnection(const char* hostname, int controlfd);
+
 #endif
+

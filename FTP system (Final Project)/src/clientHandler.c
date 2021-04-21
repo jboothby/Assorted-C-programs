@@ -367,3 +367,78 @@ void quit(int controlfd, char** tokens){
 
             exit(0);
 }
+
+/* Create the sockets, resolve address, then connect on specified port */
+int attemptConnection( const char* address, int pnum){
+    int sockfd;                             // socket file descriptor
+    int err;                                // Holds error code
+
+    struct addrinfo serv, *actualData;      // address info for the server
+    memset(&serv, 0, sizeof(serv));         
+
+    serv.ai_socktype = SOCK_STREAM;         
+    serv.ai_family = AF_INET;   
+    
+    char port[6];                        // Length 6 because port max is 65535 + \0
+    sprintf(port, "%d", pnum);           // convert portnum to string for dns lookup
+    
+    // Dns lookup
+    err = getaddrinfo(address, port, &serv, &actualData);
+    if( err ){
+        fprintf(stderr, "Error: %s\n", gai_strerror(err));
+        exit(-1);
+    }
+
+    // Create socket with server 
+    sockfd = socket(actualData -> ai_family, actualData -> ai_socktype, 0);
+    if( sockfd < 0 ){
+        perror("Error");
+        exit(-1);
+    }
+
+    if( debug ) printf("Created socket with descripter %d\n", sockfd);
+
+    // Attempt server connection
+    err = connect( sockfd, actualData -> ai_addr, actualData -> ai_addrlen);
+    if( err < 0 ){
+        perror("Error");
+        exit(-1);
+    }
+
+    if( debug ) printf("Connected to %s on port %d\n", address, pnum);
+
+    freeaddrinfo(actualData);
+
+    return sockfd;
+}
+
+/* Initiate the data connection, return the fd */
+int makeDataConnection(const char* hostname, int controlfd){
+    char* serverResponse;
+    char* substr;
+    int datafd;
+
+    // Write command to server to open data socket
+    writeToFd(controlfd, "D\n");
+    if( debug ) printf("Sent D command to server\nAwaiting server response\n");
+
+    serverResponse = readFromFd(controlfd);
+    if( debug ) printf("Recieved server response '%s'\n", serverResponse);
+
+    // If server sends back error, print it
+    if ( serverResponse[0] == 'E'){
+        fprintf(stderr, "%s\n", serverResponse + 1);
+        free( serverResponse );
+        return(-1);
+    }else{
+        // If server sends back port number, connect to it
+        substr = serverResponse + 1;
+        if( debug ) printf("Attempting connection on portnum: <%s>\n", substr);
+
+        // Convert string number to integer, and make connection on that port
+        datafd = attemptConnection(hostname, atoi(substr)); 
+        if( debug ) printf("Data connection successful\n");
+        free(serverResponse);
+    }
+    return datafd;
+}
