@@ -1,5 +1,6 @@
 /* Client side of the FTP System. See header for functionality */
-#include <clientHandler.h>
+#include <mftp.h>
+#include <mftpHandler.h>
 
 /* --------------------- Function Prototypes -------------------- */
 int processCommands(const char* hostname, int controlfd);   // Process commands

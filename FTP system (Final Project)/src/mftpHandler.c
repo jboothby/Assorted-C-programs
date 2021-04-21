@@ -1,7 +1,6 @@
 /* Function handlers for the client side connection of the FTP */
 
-#include <clientHandler.h>
-
+#include <mftpHandler.h>
 /* Executes ls -l | more -20 on client side */
 int lsLocal(){
     int pipefd[2];

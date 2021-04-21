@@ -1,6 +1,7 @@
 /* Server side of the FTP system */
 
-#include <serverHandler.h>
+#include <mftp.h>
+#include <mftpserveHandler.h>
 /* ------------ Function Prototypes ------------- */
 
 struct connectData connection(int pnum, int queueLength);   // Start a connection on pnum, or random if pnum = 0

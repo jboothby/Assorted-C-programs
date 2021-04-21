@@ -1,30 +1,30 @@
 CC = gcc
 SRC_DIR = src
 CCFLAGS = -g -Wall -Iinclude
-CLIENT = client
-SERVER = server
-SERVEROBJS = serverHandler.o
-CLIENTOBJS = clientHandler.o
+CLIENT = mftp
+SERVER = mftpserve
+SERVEROBJS = mftpserveHandler.o
+CLIENTOBJS = mftpHandler.o
 COMMONOBJS = fdio.o
 
 .PHONEY: clean memcheck
 
-all: client server
+all: mftp mftpserve
 
-client: $(COMMONOBJS) $(CLIENTOBJS)
-	$(CC) $(CCFLAGS) -o $(CLIENT) $(SRC_DIR)/client.c $(COMMONOBJS) $(CLIENTOBJS)
+mftp: $(COMMONOBJS) $(CLIENTOBJS)
+	$(CC) $(CCFLAGS) -o $(CLIENT) $(SRC_DIR)/mftp.c $(COMMONOBJS) $(CLIENTOBJS)
 
-server:	$(COMMONOBJS) $(SERVEROBJS)
-	$(CC) $(CCFLAGS) -o $(SERVER) $(SRC_DIR)/server.c $(COMMONOBJS) $(SERVEROBJS)
+mftpserve:	$(COMMONOBJS) $(SERVEROBJS)
+	$(CC) $(CCFLAGS) -o $(SERVER) $(SRC_DIR)/mftpserve.c $(COMMONOBJS) $(SERVEROBJS)
 
 fdio.o:
 	$(CC) $(CCFLAGS) -c $(SRC_DIR)/fdio.c
 
-serverHandler.o:
-	$(CC) $(CCFLAGS) -c $(SRC_DIR)/serverHandler.c
+mftpserveHandler.o:
+	$(CC) $(CCFLAGS) -c $(SRC_DIR)/mftpserveHandler.c
 
-clientHandler.o:
-	$(CC) $(CCFLAGS) -c $(SRC_DIR)/clientHandler.c
+mftpHandler.o:
+	$(CC) $(CCFLAGS) -c $(SRC_DIR)/mftpHandler.c
 
 memcheckClient: $(CLIENT)
 	valgrind --tool=memcheck --track-origins=yes --leak-check=full ./$(CLIENT) -d localhost
