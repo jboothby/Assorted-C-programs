@@ -67,6 +67,7 @@ int processCommands(int controlfd){
                 if( quit(controlfd) < 0 && debug ){
                     printf("Child <%d>: quit function returned non-zero status\n", getpid());
                 }
+                free(command);
                 return 0;
             default:
                 printf("Error. Invalid command <%c> from client\n", command[0]);
@@ -93,9 +94,7 @@ struct connectData connection(int pnum, int queueLength){
         sprintf(caller, "Parent");
     }
 
-    if( debug ){
-        printf("%s <%d>: Setting up connection using pnum <%d>\n", caller, getpid(), pnum);
-    }
+    if( debug ) printf("%s <%d>: Setting up connection using pnum <%d>\n", caller, getpid(), pnum);
 
     // Declare socket and set options
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -113,9 +112,7 @@ struct connectData connection(int pnum, int queueLength){
         return cdata;
     }
 
-    if( debug ){
-        printf("%s <%d>: Created socket with file descriptor <%d>\n", caller, getpid(), listenfd);
-    }
+    if( debug ) printf("%s <%d>: Created socket with file descriptor <%d>\n", caller, getpid(), listenfd);
 
     // Declare sockaddress structure and set parameters
     struct sockaddr_in servAddr;
@@ -141,9 +138,8 @@ struct connectData connection(int pnum, int queueLength){
     cdata.listenfd = listenfd;
     cdata.portnum = ntohs(socketinfo.sin_port);
 
-    if( debug ){
-        printf("%s <%d>: Bound socket to port <%d>\n", caller, getpid(), cdata.portnum);
-    }
+    if( debug ) printf("%s <%d>: Bound socket to port <%d>\n", caller, getpid(), cdata.portnum);
+    
 
     // Make the listen call to spin up server
     // Set the queue to size 4
@@ -154,9 +150,7 @@ struct connectData connection(int pnum, int queueLength){
         return cdata;
     }
 
-    if( debug ){
-        printf("%s <%d>: Listening on socket with queue size <%d>\n", caller, getpid(), queueLength);
-    }
+    if( debug )  printf("%s <%d>: Listening on socket with queue size <%d>\n", caller, getpid(), queueLength);
 
     return cdata;
 }
@@ -170,9 +164,7 @@ int dataConnection(int controlfd){
 
     char ackWithPort[8];    // Enough for A*****\n\0
 
-    if( debug ){
-        printf("Child <%d>: Starting Data connection\n", getpid());
-    }
+    if( debug ) printf("Child <%d>: Starting Data connection\n", getpid());
 
     // Start new fd with random port
     connectData cdata = connection(0, 1); 
@@ -185,9 +177,7 @@ int dataConnection(int controlfd){
         return -1;
     }
 
-    if( debug ){
-        printf("Child <%d>: Created data connection on port <%d>\n", getpid(), cdata.portnum);
-    }
+    if( debug ) printf("Child <%d>: Created data connection on port <%d>\n", getpid(), cdata.portnum);
 
     // Create ack string, write to fd
     sprintf(ackWithPort, "A%d\n", cdata.portnum);
@@ -212,9 +202,7 @@ int dataConnection(int controlfd){
         printf("Error: %s\n", gai_strerror(hostEntry));
     }
 
-    if( debug ){
-        printf("Child <%d>: Connection successful with host <%s> on port <%d>, using fd <%d>\n", getpid(), hostName, cdata.portnum, datafd);
-    }
+    if( debug ) printf("Child <%d>: Connection successful with host <%s> on port <%d>, using fd <%d>\n", getpid(), hostName, cdata.portnum, datafd);
 
     close(cdata.listenfd);
     return datafd;
@@ -269,10 +257,7 @@ int serverConnection(struct connectData cdata){
             printf("Parent <%d>: Connected to client (%s) using port <%d>\n", getpid(), hostName, cdata.portnum);
 
             // send output to stdout
-            if(debug){
-                printf("Parent <%d> : Forked process <%d>\n", getpid(), procId);
-                fflush(stdout);
-            } 
+            if(debug) printf("Parent <%d> : Forked process <%d>\n", getpid(), procId);
 
 
         }else{                                          // child block

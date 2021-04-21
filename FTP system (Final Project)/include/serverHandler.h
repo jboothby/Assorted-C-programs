@@ -4,14 +4,11 @@
 #define SERVERHANDLER_H
 
 #include <mftp.h>
-/* ----------- Defines and Globals --------------*/
-static int debug = 0;       // Debug flag for verbose output
-
 /* ------------ Structures --------------------- */
 typedef struct connectData{       // Holds data about a connection
-    int listenfd;                   // file descriptor for accept
-    int portnum;                    // Port for connection
-    int errnum;                     // Value of errno if error occurs
+    int listenfd;                 // file descriptor for accept
+    int portnum;                  // Port for connection
+    int errnum;                   // Value of errno if error occurs
 }connectData;
 
 /* ------------ Function Prototypes ------------- */

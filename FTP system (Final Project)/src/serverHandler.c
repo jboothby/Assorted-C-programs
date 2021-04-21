@@ -1,16 +1,6 @@
 /* Server side function handler of the FTP system */
 
-#include <mftp.h>
-/* ----------- Defines and Globals --------------*/
-static int debug = 0;       // Debug flag for verbose output
-
-/* ------------ Structures --------------------- */
-typedef struct connectData{       // Holds data about a connection
-    int listenfd;                   // file descriptor for accept
-    int portnum;                    // Port for connection
-    int errnum;                     // Value of errno if error occurs
-}connectData;
-
+#include <serverHandler.h>
 /* ------------ Function Prototypes ------------- */
 
 int cd(int controlfd, char *path);                          // Change directory to path

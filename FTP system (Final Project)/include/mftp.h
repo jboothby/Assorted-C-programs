@@ -22,5 +22,6 @@
 
 /* ------------------- Defines and Globals ---------------------- */
 #define PORTNUM 37896   // Port number for connection to server
+static int debug = 0;   // Global debug flag, set to 1 for verbose output
 
 #endif
