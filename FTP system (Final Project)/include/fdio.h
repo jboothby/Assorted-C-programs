@@ -1,3 +1,4 @@
+/* Common functions needed for both mftp and mftpServe that relate to file i/o */
 #ifndef FDIO_H
 #define FDIO_H
 
@@ -15,4 +16,10 @@ char* readFromFd(int fd);
 /* Returns a string array where first string is the command, and second is parameter */
 char** tokenSplit(char* string);
 
+/* Stat the file and make sure that it exists, is of correct type, and */
+/* Has the correct permissions. Path is the path to the file/directory  */
+/* Type is either "dir" or "reg", perm is an integer created using a    */
+/* bitwise OR of the macros R_OK, W_OK, X_OK as used in the access      */
+/* System call. Return 0 on success, errno on error                     */
+int statfile(char *path, char *type, int perm);
 #endif

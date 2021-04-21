@@ -13,6 +13,19 @@ int main(int argc, char* argv[]){
 
     hostname = parseArgs(argc, argv);
     controlfd = attemptConnection(hostname, PORTNUM);
+
+    printf("\nConnected to host %s on port %d\n", hostname, PORTNUM);
+
+    printf("\nWelcome to the MFTP system. Your available commands are as follows\n\n\
+            exit            - terminate all child processes of the server and then exit\n\
+            cd <pathname>   - change the current working directory to <pathname>\n\
+            rcd <pathname>  - change the current working directory of the server to <pathname>\n\
+            ls              - execute the ls -l command on the client, show output 20 lines at a time. press space to show more\n\
+            rls             - execute the ls -l command on the server, show output 20 lines at a time. press space to show more\n\
+            get <pathname>  - retrieve <pathname> from the server and store it locally in current directory. \n\
+            show <pathname> - retrive the contents of <pathname> and show 20 lines at a time. Press space to show more.\n\
+            put <pathname>  - transmite the contents of <pathname> to server and store in server cwd. Must be a regular file and readable.\n");
+    
     processCommands(hostname, controlfd);
 
     return 0;
@@ -73,9 +86,14 @@ int processCommands(const char* hostname, int controlfd){
         /* RLS COMMAND EXECUTION BLOCK */
         }else if( strcmp(tokens[0], "rls") == 0){
 
+            if( strlen(tokens[1]) > 0 ){
+                printf("Too many tokens, rls takes no parameters\n");
+                continue;
+            }
+
             if( debug) printf("Executing command <rls>\n");
 
-            if( lsRemote(hostname, controlfd) < 0){
+            if( lsRemote(hostname, controlfd) < 0 && debug){
                 writeToFd(2, "rls command did not execute properly\n");
             }
 
@@ -85,7 +103,7 @@ int processCommands(const char* hostname, int controlfd){
             if( debug) printf("Executing command <get> with parameter <%s>\n", tokens[1]);
 
             // Call get with save flag set to 1
-            if( get(tokens[1], hostname, controlfd, 1) < 0){
+            if( get(tokens[1], hostname, controlfd, 1) < 0 && debug){
                 writeToFd(2, "Get command did not execute properly\n");
             }
 
@@ -95,7 +113,7 @@ int processCommands(const char* hostname, int controlfd){
             if( debug) printf("Executing command <show> with parameter <%s>\n", tokens[1]);
 
             // Call get with the save flag set to 0
-            if( get(tokens[1], hostname, controlfd, 0) < 0){
+            if( get(tokens[1], hostname, controlfd, 0) < 0 && debug){
                 writeToFd(2, "Show command did not execute properly\n");
             }
 
@@ -105,7 +123,7 @@ int processCommands(const char* hostname, int controlfd){
             if( debug) printf("Executing command <put> with parameter <%s>\n", tokens[1]);
 
             // Call put with the path, hostname, and controlfd
-            if( put(tokens[1], hostname, controlfd) < 0){
+            if( put(tokens[1], hostname, controlfd) < 0 && debug){
                 writeToFd(2, "Put command did not execute properly\n");
             }
 

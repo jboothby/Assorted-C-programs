@@ -18,6 +18,12 @@ int cd(int controlfd, char *path){
     int err;
     char currentDir[PATH_MAX];
 
+    // Make sure file has proper type and permissions
+    if( (err = statfile(path, "dir", X_OK)) != 0 ){
+        error(controlfd, err);
+        return -1;
+    }
+
     // Change directory to path
     err = chdir(path);
     if( err < 0 ){
@@ -106,10 +112,17 @@ int ls(int controlfd, int datafd){
 int get(int controlfd, int datafd, char* path){
     int filefd;
     char buf[256];
-    int actualRead, actualWrite;
+    int actualRead, actualWrite, err;
 
     if( debug ){
         printf("Child <%d>: Getting file at <%s>\n", getpid(), path);
+    }
+
+    // check that file type and permissions are correct
+    if( (err = statfile(path, "reg", R_OK)) != 0 ){
+        error(controlfd, err);
+        close(datafd);
+        return -1;
     }
 
     // Open file, handle errors

@@ -78,6 +78,37 @@ int lsRemote(const char* hostname, int controlfd){
     return -1; //If we got here, there was an error with datafd
 }
 
+/* Change the directory on local machine to path */
+/* Return 0 on success, or -1 on error           */
+int cdLocal(char* path){
+       
+            int err;
+            char currentDir[PATH_MAX];
+
+            // Make sure path is valid diretory
+            if( (err = statfile(path, "dir", X_OK)) != 0 ){
+                printf("Error: %s\n", strerror(err));
+                return -1;
+            }
+
+            // Change directory
+            err = chdir(path);
+            if( err < 0 ){
+                perror("Error");
+                return -1;
+            }
+
+            // Output change if debug flag set
+            getcwd(currentDir, PATH_MAX);
+            if( currentDir == NULL){
+                perror("Error");
+                return -1;
+            }
+            printf("Directory changed to %s\n", currentDir);
+
+            return 0;
+}
+
 /* Execute the cd command on server */
 /* Returns 0 on success, -1 on error */
 int cdRemote(const char* path, int controlfd){
@@ -96,10 +127,12 @@ int cdRemote(const char* path, int controlfd){
     if( debug ) printf("Received server response '%s'\n", serverResponse);
 
     if( serverResponse[0] == 'E' ){
-        fprintf(stderr, "%s\n", serverResponse + 1);
+        fprintf(stderr, "Error: %s\n", serverResponse + 1);
         free( serverResponse );
         return -1;
     }
+
+    printf("Server directory changed to %s\n", path);
 
     free(serverResponse);
     return 0;
@@ -141,7 +174,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
     if( debug ) printf("Received server response '%s'\n", serverResponse);
 
     if( serverResponse[0] == 'E'){
-        fprintf(stderr, "%s\n", serverResponse + 1);
+        fprintf(stderr, "Error: %s\n", serverResponse + 1);
         free(serverResponse);
         return -1;
     }
@@ -185,7 +218,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
 
     // If there was an error, delete the file we just created
     if( returnStatus == -1 ){
-        if( debug ) printf("Error during file transfer, unlinking file '%s'\n", filename);
+        printf("Error during file transfer, unlinking file '%s'\n", filename);
         unlink(filename);
     }
 
@@ -193,7 +226,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
     close(outputfd);
     close(datafd);
 
-    printf("Data transfer complete\n");
+    printf("Data transfer complete, saved file %s\n", filename);
 
     return returnStatus;
 }
@@ -203,7 +236,7 @@ int put(char* path, const char *hostname, int controlfd){
     char *serverResponse;
     char buf[256];
     int filefd, datafd;
-    int actualRead, actualWrite;
+    int actualRead, actualWrite, err;
 
     // Filename is everything after last /, or path if no /
     char *filename;
@@ -211,6 +244,12 @@ int put(char* path, const char *hostname, int controlfd){
         filename = (strrchr(path, '/') + 1);
     }else{
         filename = path;
+    }
+
+    // Ensure correct type and permissions
+    if( (err = statfile(path, "reg", R_OK)) != 0 ){
+        printf("Error: %s\n", strerror(err));
+        return -1;
     }
 
     // Create command string to send to server
@@ -271,6 +310,8 @@ int put(char* path, const char *hostname, int controlfd){
         return -1;
     }
 
+    printf("Finished tranferring file %s to server\n", filename);
+
     // If no errors, return 0 for success
     free(serverResponse);
     close(filefd);
@@ -312,34 +353,6 @@ int morePipe(int datafd){
     }
 
     return 0;
-}
-
-/* Change the directory on local machine to path */
-/* Return 0 on success, or -1 on error           */
-int cdLocal(char* path){
-       
-            int err;
-
-            char currentDir[PATH_MAX];
-
-            // Change directory
-            err = chdir(path);
-            if( err < 0 ){
-                perror("Error");
-                return -1;
-            }
-
-            // Output change if debug flag set
-            if( debug ){
-                getcwd(currentDir, PATH_MAX);
-                if( currentDir == NULL){
-                    perror("Error");
-                    return -1;
-                }
-                printf("Directory changed to %s\n", currentDir);
-            }
-
-            return 0;
 }
 
 /* Send exit command to server, then free all memory and exit */

@@ -1,8 +1,10 @@
-/* Handle reading and writing from a file descriptor */
+/* File descriptor input/output. Handles dealing with file descriptors */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -106,4 +108,37 @@ char** tokenSplit(char* string){
     }
 
     return tokens;
+}
+
+/* Stat the file and make sure that it exists, is of the correct type, and has correct permissions */
+/* Path is the path to the file/directtory, type is either "dir" or "reg", perm is an integer using */
+/* created using a bitwise or of the macros R_OK, W_OK, X_OK as with the access system call */
+/* Returns 0 on success or errno on error                                                   */
+int statfile(char *path, char *type, int perm){
+    struct stat statp;
+
+    // Error out it path does not exist
+    if( lstat(path, &statp) < 0 ){
+        return errno;
+    }
+
+    // Ensure path is of the right type
+    if( strcmp( type, "dir" ) == 0 ){
+        if( !S_ISDIR(statp.st_mode) ){
+            return ENOTDIR;             // return errno value for not directory
+        }
+    }else if( strcmp( type, "reg") == 0){
+        if( !S_ISREG(statp.st_mode) ){
+            return EISDIR;              // return errno value for directory
+        }
+    }else{
+        return EINVAL;                  // return errno for invalid argument
+    }
+
+    // Check that permissions match
+    if( access(path, perm) < 0 ){
+        return errno;
+    }
+
+    return 0;
 }
