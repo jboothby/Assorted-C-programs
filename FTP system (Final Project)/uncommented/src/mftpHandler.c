@@ -59,7 +59,7 @@ int lsRemote(const char* hostname, int controlfd){
 
         
         if( serverResponse[0] == 'E'){
-            fprintf(stderr, "%s\n", serverResponse + 1);
+            fprintf(stderr, "Error: %s\n", serverResponse + 1);
             free( serverResponse );
             close(datafd);
             return -1;
@@ -86,7 +86,7 @@ int cdLocal(char* path){
 
             
             if( (err = statfile(path, "dir", X_OK)) != 0 ){
-                printf("Error: %s\n", strerror(err));
+                fprintf(stderr,"Error: %s\n", strerror(err));
                 return -1;
             }
 
@@ -217,7 +217,7 @@ int get(char* path, const char *hostname, int controlfd, int save){
 
     
     if( returnStatus == -1 ){
-        printf("Error during file transfer, unlinking file '%s'\n", filename);
+        fprintf(stderr,"Error during file transfer, unlinking file '%s'\n", filename);
         unlink(filename);
     }
 
@@ -247,7 +247,7 @@ int put(char* path, const char *hostname, int controlfd){
 
     
     if( (err = statfile(path, "reg", R_OK)) != 0 ){
-        printf("Error: %s\n", strerror(err));
+        fprintf(stderr, "Error: %s\n", strerror(err));
         return -1;
     }
 
@@ -303,7 +303,7 @@ int put(char* path, const char *hostname, int controlfd){
     if( debug ) printf("Received '%s' from server\n", serverResponse);
 
     if (serverResponse[0] == 'E'){
-        fprintf(stderr, "%s\n", serverResponse + 1);
+        fprintf(stderr, "Error: %s\n", serverResponse + 1);
         free(serverResponse);
         close(filefd);
         return -1;
@@ -363,7 +363,7 @@ void quit(int controlfd, char** tokens){
             writeToFd(controlfd, "Q\n");
             serverResponse = readFromFd(controlfd);
             if( serverResponse[0] == 'E'){
-                printf("Error: %s\n", serverResponse + 1);
+                fprintf(stderr, "Error: %s\n", serverResponse + 1);
             }
             
             
@@ -439,7 +439,7 @@ int makeDataConnection(const char* hostname, int controlfd){
 
     
     if ( serverResponse[0] == 'E'){
-        fprintf(stderr, "%s\n", serverResponse + 1);
+        fprintf(stderr, "Error: %s\n", serverResponse + 1);
         free( serverResponse );
         return(-1);
     }else{

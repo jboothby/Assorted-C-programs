@@ -17,6 +17,7 @@ int cd(int controlfd, char *path){
 
     int err;
     char currentDir[PATH_MAX];
+    printf("Child <%d>: Received cd command with parameter <%s>\n", getpid(), path);
 
     // Make sure file has proper type and permissions
     if( (err = statfile(path, "dir", X_OK)) != 0 ){
@@ -36,13 +37,12 @@ int cd(int controlfd, char *path){
     }
 
     // Output new diretory
-    if( debug ){
-        getcwd(currentDir, PATH_MAX);
-        if( currentDir == NULL ){
-            perror("getcwd");
-        }
-        printf("Child <%d>: Directory changed to %s\n", getpid(), currentDir);
+    getcwd(currentDir, PATH_MAX);
+    if( currentDir == NULL ){
+        perror("Error");
     }
+
+    printf("Child <%d>: Directory changed to %s\n", getpid(), currentDir);
 
     return 0;
 }
@@ -51,18 +51,16 @@ int cd(int controlfd, char *path){
 /* Returns 0 on success, -1 on error */
 int quit(int controlfd){
     
-    if( debug ){
-        printf("Child <%d>: Exit command detected. Ending connection\n", getpid());
-    }
+    printf("Child <%d>: Exit command detected. Ending connection\n", getpid());
 
     // Close the control file descriptor, write acknowledge
     writeToFd(controlfd, "A\n");
     if( close(controlfd) < 0 ){
-        if( debug ){
-            perror("close");
-        }
+        error(controlfd, errno);
         return -1;
     }
+
+    printf("Child <%d>: Exit success\n", getpid());
 
     return 0;
 }
@@ -71,12 +69,29 @@ int quit(int controlfd){
 /* Returns 0 on success or -1 on error*/
 int ls(int controlfd, int datafd){
    int err; 
+   char currentDir[PATH_MAX];
    int procId;
 
-   // For off new process to handle ls
-   procId = fork();
-   // In parent, just wait for child to exit
-   if( procId ){
+    printf("Child <%d>: Recieved ls command\n", getpid());
+
+    // get current directory
+    getcwd(currentDir, PATH_MAX);
+    if( currentDir == NULL ){
+        error(controlfd, errno);
+        return -1;
+    }
+
+    // check that file type and permissions are correct
+    if( (err = statfile(currentDir, "dir", R_OK)) != 0 ){
+        error(controlfd, err);
+        close(datafd);
+        return -1;
+    }
+
+    // For off new process to handle ls
+    procId = fork();
+    // In parent, just wait for child to exit
+    if( procId ){
 
        close( datafd ); // close datafd, only child needs it
 
@@ -89,10 +104,8 @@ int ls(int controlfd, int datafd){
        // Write to indicate command executed properly
        writeToFd(controlfd, "A\n");
 
-       if( debug ){
-           printf("Child <%d>: Finished executing ls\n", getpid());
-       }
-   }else{
+       printf("Child <%d>: Finished executing ls successfully\n", getpid());
+    }else{
        // rename stdout to datafd
        close(1); dup(datafd); close(datafd);
 
@@ -113,6 +126,8 @@ int get(int controlfd, int datafd, char* path){
     int filefd;
     char buf[256];
     int actualRead, actualWrite, err;
+
+    printf("Child <%d>: Recieved get command with parameter <%s>\n", getpid(), path);
 
     if( debug ){
         printf("Child <%d>: Getting file at <%s>\n", getpid(), path);
@@ -151,6 +166,7 @@ int get(int controlfd, int datafd, char* path){
         close(datafd);
         return -1;
     }
+    printf("Child <%d>: Finished transmitting file to client successfully\n", getpid());
 
     return 0;
 }
@@ -162,6 +178,8 @@ int put(int controlfd, int datafd, char* path){
     int filefd;
     char buf[256];
     int actualRead, actualWrite;
+
+    printf("Child<%d>: Received put command with parameter <%s>\n", getpid(), path);
 
     // If there are slashes, the filename is everything after the last one
     char *filename;
@@ -193,7 +211,7 @@ int put(int controlfd, int datafd, char* path){
         // On write error, delete file 
         if( actualWrite < 0 ){
             if( debug ){
-                perror("write");
+                perror("Error");
             }
             unlink(filename);
             close(filefd);
@@ -203,16 +221,14 @@ int put(int controlfd, int datafd, char* path){
     // On read error, delete file
     if( actualRead < 0 ){
         if( debug ){
-            perror("read");
+            perror("Error");
         }
         unlink(filename);
         close(filefd);
         return -1;
     }
 
-    if( debug ){
-        printf("Child <%d>: File transfer successful\n", getpid());
-    }
+    printf("Child <%d>: File transfer successful\n", getpid());
 
     return 0;
 }
@@ -225,7 +241,5 @@ void error(int controlfd, int errnum){
     writeToFd(controlfd, "\n");
 
     // Print errors on server side if debug output
-    if( debug ){
-        printf("Process <%d>: Error: %s\n", getpid(), strerror(errnum));
-    }
+    fprintf(stderr, "Process <%d>: Error: %s\n", getpid(), strerror(errnum));
 }
