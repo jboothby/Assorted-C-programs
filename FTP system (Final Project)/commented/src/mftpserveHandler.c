@@ -99,10 +99,11 @@ int ls(int controlfd, int datafd){
            printf("Child <%d>: spawned new process <%d> to handle ls\n", getpid(), procId);
        }
 
+       // Write to indicate command executed properly, client can start reading
+       writeToFd(controlfd, "A\n");
+
        wait(&err);      // Wait for child to finish executing
 
-       // Write to indicate command executed properly
-       writeToFd(controlfd, "A\n");
 
        printf("Child <%d>: Finished executing ls successfully\n", getpid());
     }else{

@@ -99,10 +99,11 @@ int ls(int controlfd, int datafd){
            printf("Child <%d>: spawned new process <%d> to handle ls\n", getpid(), procId);
        }
 
-       wait(&err);      
-
        
        writeToFd(controlfd, "A\n");
+
+       wait(&err);      
+
 
        printf("Child <%d>: Finished executing ls successfully\n", getpid());
     }else{
